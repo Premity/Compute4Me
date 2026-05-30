@@ -149,6 +149,40 @@ class StateStore:
         )
         self._conn.commit()
 
+    # --- Tokens ------------------------------------------------------------
+
+    def save_token(
+        self,
+        *,
+        jti: str,
+        room_id: str,
+        max_workers: int | None,
+        expires_at: str,
+        created_at: str,
+        revoked: bool = False,
+    ) -> None:
+        """Persist Invite Token metadata (not the secret — see data-model.md)."""
+        self._conn.execute(
+            "INSERT INTO tokens (jti, room_id, max_workers, expires_at, revoked, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(jti) DO UPDATE SET "
+            "  room_id=excluded.room_id, max_workers=excluded.max_workers, "
+            "  expires_at=excluded.expires_at, revoked=excluded.revoked, "
+            "  created_at=excluded.created_at",
+            (jti, room_id, max_workers, expires_at, int(revoked), created_at),
+        )
+        self._conn.commit()
+
+    def set_token_revoked(self, jti: str) -> None:
+        """Mark a token's jti revoked (idempotent; no-op if the jti is unknown)."""
+        self._conn.execute("UPDATE tokens SET revoked = 1 WHERE jti = ?", (jti,))
+        self._conn.commit()
+
+    def load_revoked_jtis(self) -> set[str]:
+        """All revoked jtis; used on restart to rebuild the in-memory revocation set."""
+        rows = self._conn.execute("SELECT jti FROM tokens WHERE revoked = 1").fetchall()
+        return {row["jti"] for row in rows}
+
     # --- Workers -----------------------------------------------------------
 
     def save_worker(self, worker: Worker) -> None:

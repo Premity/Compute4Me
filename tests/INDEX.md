@@ -18,7 +18,8 @@ Map of **T-task → test file(s) → markers**. Updated per PR — every new tes
 | T02 | tests/unit/test_types.py | `task("T02")`, `unit` |
 | T03 | tests/unit/test_state.py | `task("T03")`, `unit` |
 | T04 | tests/unit/test_messages.py | `task("T04")`, `unit` |
+| T05 | tests/unit/test_tokens.py | `task("T05")`, `unit` |
 
 <!-- Template row:
-| T05 | tests/unit/test_tokens.py | `task("T05")`, `unit` |
+| T06 | tests/unit/test_server_cert.py | `task("T06")`, `unit` |
 -->
