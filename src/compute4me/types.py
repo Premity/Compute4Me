@@ -104,6 +104,49 @@ class MapJobSpec(BaseModel):
     env: dict[str, str] = {}
 
 
+# --- Durable Master records (master/state.py; see data-model.md §Master State Store) ---
+
+
+class Room(BaseModel):
+    """A closed-membership compute pool owned by one Master."""
+
+    id: str
+    name: str
+    created_at: str
+
+
+class Worker(BaseModel):
+    """A joined Worker (one container = one Worker) and its advertised profile."""
+
+    id: str
+    room_id: str
+    token_jti: str
+    host_id: str
+    profile: CapabilityProfile
+    status: Literal["joining", "idle", "busy", "down", "quarantined"]
+    quarantine_until: str | None = None
+    last_heartbeat_at: str | None = None
+    joined_at: str
+
+
+class Job(BaseModel):
+    """A submitted Job (Map or Search) and its lifecycle status.
+
+    ``spec`` holds the raw submission (a ``MapJobSpec`` or ``SearchJobSpec`` dump);
+    it's stored opaquely as JSON and re-validated by the submitting layer, so the
+    durable record keeps it as a free-form object.
+    """
+
+    id: str
+    room_id: str
+    type: Literal["map", "search"]
+    spec: JsonObject
+    status: Literal["queued", "running", "completed", "cancelled"]
+    top_k: int | None = None
+    created_at: str
+    finished_at: str | None = None
+
+
 # --- Internal task representation (Master ↔ Worker) ---
 
 
