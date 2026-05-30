@@ -88,6 +88,48 @@ CREATE INDEX workers_room_status_idx ON workers (room_id, status);
 CREATE INDEX artifacts_name_version_idx ON artifacts (name, version);
 ```
 
+### Durable record models
+
+The `rooms`, `workers`, and `jobs` rows are mirrored by Pydantic models (`Room`, `Worker`,
+`Job` in `types.py`) that `master/state.py` saves and loads. They mirror the columns above,
+with `Worker.profile` holding the `CapabilityProfile` (stored as `profile_json`) and
+`Job.spec` holding the raw submission as a free-form JSON object (stored as `spec_json`,
+re-validated against `MapJobSpec`/`SearchJobSpec` by the submitting layer):
+
+```python
+class Room(BaseModel):
+    id: str
+    name: str
+    created_at: str
+
+class Worker(BaseModel):
+    id: str
+    room_id: str
+    token_jti: str
+    host_id: str
+    profile: CapabilityProfile
+    status: Literal["joining", "idle", "busy", "down", "quarantined"]
+    quarantine_until: Optional[str] = None
+    last_heartbeat_at: Optional[str] = None
+    joined_at: str
+
+class Job(BaseModel):
+    id: str
+    room_id: str
+    type: Literal["map", "search"]
+    spec: dict                    # raw MapJobSpec/SearchJobSpec dump, stored opaquely
+    status: Literal["queued", "running", "completed", "cancelled"]
+    top_k: Optional[int] = None
+    created_at: str
+    finished_at: Optional[str] = None
+```
+
+The wire `Task` model (below) carries identity, args, inputs, and requirements; the `tasks`
+table adds the scheduling-state columns (`status`, `assigned_worker_id`, `last_error`,
+`created_at`, `updated_at`) that `save_task` persists alongside the model, so the wire form
+stays minimal. `tokens` and `artifacts` are written through field-level calls until their
+owning tasks (T05, T11) introduce dedicated models.
+
 ### Why SQLite
 
 - The Master is a single-process control plane at the target scale (≤50 Workers per Room).
