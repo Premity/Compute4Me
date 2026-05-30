@@ -1,0 +1,60 @@
+# Changelog
+
+All notable changes to Compute4Me are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/) with the project on `0.x.y` — *no API stability guarantees pre-1.0*.
+
+For per-version Product Requirements (scope, acceptance criteria), see [docs/prd.md](./docs/prd.md) (current milestone) and [docs/archive/](./docs/archive/) (past milestones). For decisions, see [docs/adr/](./docs/adr/).
+
+## [Unreleased]
+
+### Added
+- Repository layout: `docs/` holds all project documentation (PRD, context, roadmap, ADRs, architecture, research, archive); root limited to GitHub-recognized files (README, LICENSE, CONTRIBUTING, CHANGELOG, SECURITY).
+- **Architecture reference** under `docs/architecture/`: `overview.md`, `data-model.md`, `modules.md`, `wire-protocol.md`, `error-handling.md`. Extracted from PRD §4–§7 so architecture stays durable across version-specific PRDs.
+- **Research consolidation**: `docs/research/{related-work,novelty}.md` replace eight long-form drafts + PDF renders.
+- **ADR-0013** — CLI design and observability command split (flat structure + token group; five-command observability split: status/progress/logs/events/fetch; foreground-default for `serve`/`worker`).
+- **ADR-0014** — Admin tokens for Job submission (extends [ADR-0002](./docs/adr/0002-closed-membership-rooms.md) with an `admin` capability bit on Invite Tokens; the Python submission API requires admin tokens).
+- **Container Contract** extended with `env={...}` pass-through on Job specs — the W&B / MLflow / TensorBoard integration path.
+- **ADR-0015** — Master URL passed separately from the Token (via `--master` or `C4M_MASTER`) so the Master can be moved without re-issuing tokens.
+- **`docs/architecture/operations.md`** — running and maintaining a deployment: backup/restore, in-place upgrade, Master migration, cert rotation, pausing/decommissioning Workers, multi-Room operation, co-located Master+Worker, storage growth, emergency procedures.
+- **`docs/architecture/deployment.md`** — practical deployment reference (volume mounts, GPU flags, Docker socket grant, multi-GPU hosts, where the CLI lives).
+- **`docs/style-guide.md`** — Python + Markdown conventions (replaces earlier placeholder).
+- **README.md** restructured by persona (Worker contributor / Master operator / Researcher) instead of a flat install section.
+- **SECURITY.md** extended with Docker socket privilege note and admin-token elevated-trust caveat.
+- Development workflow captured in `CONTRIBUTING.md`: feature branches `feat/T<NN>-<slug>`, squash merges, Conventional Commits, PR template with acceptance criteria checkboxes and verification + exploratory testing sections, polish issue triage.
+- CI scaffolding: `.pre-commit-config.yaml` (ruff, mypy, mdformat, markdown link check), `scripts/check_md_links.py` (relative-link verification), `.github/PULL_REQUEST_TEMPLATE.md`, `.github/ISSUE_TEMPLATE/{polish,bug,config}.{md,yml}`.
+- `SECURITY.md` (vulnerability reporting).
+- `tests/INDEX.md` scaffold (T-task → test file map; populated as code lands).
+
+### Changed
+- Python target version: 3.11 → **3.13**.
+- PRD lifecycle: living `docs/prd.md` describes the current milestone; archived to `docs/archive/prd-vX.Y.md` on each version ship (Pattern B).
+- Versioning: SemVer Pattern A (no pre-releases for v0.x); tag every minor; GitHub Releases authored only when there's an audience.
+
+### Notes
+- Greenfield repo. The pre-implementation period set up the design corpus (PRD, CONTEXT, ROADMAP, 14 ADRs, architecture docs, research framing) and the development workflow (CONTRIBUTING, PR/issue templates, CI gates).
+- Code implementation begins with **T01 — Repo skeleton + packaging + image** ([docs/prd.md §8](./docs/prd.md#8-implementation-tasks-t01t27)).
+
+---
+
+<!-- Future-version sections are added top-down as releases are cut. Template:
+
+## [vX.Y.Z] — YYYY-MM-DD
+
+### Added
+- New features.
+
+### Changed
+- Changes to existing functionality.
+
+### Deprecated
+- Soon-to-be-removed features.
+
+### Removed
+- Features removed in this release.
+
+### Fixed
+- Bug fixes.
+
+### Security
+- Vulnerability remediations.
+
+-->

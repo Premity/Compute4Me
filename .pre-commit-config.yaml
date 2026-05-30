@@ -1,0 +1,67 @@
+# Pre-commit hooks for Compute4Me.
+#
+# Install:  uv run pre-commit install
+# Run all:  uv run pre-commit run --all-files
+#
+# These hooks run before each commit on staged files only. They mirror the
+# CI gates (ruff, mypy, link-check) so most issues surface locally, saving a
+# CI round-trip. CI re-runs them as a safety net regardless.
+#
+# Note: ruff/mypy hooks activate once `pyproject.toml` and `src/compute4me/`
+#       exist (i.e., after T01 lands). Until then, only the markdown checks
+#       are useful — but the config can sit in place.
+
+repos:
+  # Generic hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1024']  # 1 MB — large binaries (PDFs, model checkpoints) don't belong in git
+
+  # Markdown formatting — consistent style across all .md files
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.22
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm           # GitHub-flavored markdown (tables, task lists, strikethrough)
+          - mdformat-frontmatter   # respect YAML frontmatter (used in ADRs)
+        # Preserve our chosen line breaks; don't reflow paragraphs aggressively.
+        args: ['--wrap=no']
+
+  # Project-local: check that relative markdown links resolve.
+  # Fast (~ms); runs on every commit on .md files.
+  - repo: local
+    hooks:
+      - id: check-md-links
+        name: Check relative markdown links
+        entry: python scripts/check_md_links.py
+        language: system
+        files: \.md$
+        pass_filenames: true
+
+  # Python: lint + format (replaces black / isort / flake8 / pyupgrade).
+  # Activate once pyproject.toml exists.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Python: type checking.
+  # mypy --strict against src/compute4me/. Slow-ish; only runs on changed .py files.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args: [--strict, --ignore-missing-imports]
+        files: ^src/
+        additional_dependencies:
+          - pydantic>=2.0
