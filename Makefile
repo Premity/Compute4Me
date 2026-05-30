@@ -2,12 +2,20 @@
 
 IMAGE ?= ghcr.io/premity/compute4me:dev
 
-.PHONY: dev test lint types image e2e
+.PHONY: dev check fmt test lint types image e2e
 
 # Sync deps (creates .venv) and install pre-commit hooks.
 dev:
 	uv sync
 	uv run pre-commit install
+
+# Run all three CI gates locally — the "will my PR pass CI?" pre-push check.
+check: lint types test
+
+# Auto-fix style: format + apply ruff's safe fixes. (lint only checks; this fixes.)
+fmt:
+	uv run ruff format .
+	uv run ruff check --fix .
 
 # CI default: skip tests needing real Docker/GPU. Run `uv run pytest` for the full set.
 test:
