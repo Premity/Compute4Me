@@ -25,7 +25,8 @@ from pathlib import Path
 # [text](target) — capture target. Greedy on text, lazy on target.
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
-# Backtick-delimited inline code (single or multiple backticks) — content inside is not parsed for links.
+# Backtick-delimited inline code (single or multiple backticks); content inside is not
+# parsed for links.
 INLINE_CODE_RE = re.compile(r"(`+)[^`]*?\1")
 
 EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache"}
