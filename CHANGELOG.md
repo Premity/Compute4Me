@@ -7,6 +7,7 @@ For per-version Product Requirements (scope, acceptance criteria), see [docs/prd
 ## [Unreleased]
 
 ### Added
+- **T01 — Repo skeleton + packaging + image**: `pyproject.toml` (uv, Python 3.13, ruff + mypy + pytest config), the `src/compute4me/` package per [docs/prd.md §5](./docs/prd.md#5-repo-layout-planned) with docstring-only module stubs, single `Dockerfile` (`serve`/`worker` entrypoints), `Makefile` (`dev`/`test`/`lint`/`types`/`image`/`e2e`), `docker-compose.dev.yml`, `.github/workflows/ci.yml` (`ci-test`/`ci-lint`/`ci-types`), and the `compute4me` CLI surface from [wire-protocol.md §4.1](./docs/architecture/wire-protocol.md).
 - Repository layout: `docs/` holds all project documentation (PRD, context, roadmap, ADRs, architecture, research, archive); root limited to GitHub-recognized files (README, LICENSE, CONTRIBUTING, CHANGELOG, SECURITY).
 - **Architecture reference** under `docs/architecture/`: `overview.md`, `data-model.md`, `modules.md`, `wire-protocol.md`, `error-handling.md`. Extracted from PRD §4–§7 so architecture stays durable across version-specific PRDs.
 - **Research consolidation**: `docs/research/{related-work,novelty}.md` replace eight long-form drafts + PDF renders.

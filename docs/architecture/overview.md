@@ -83,7 +83,7 @@ SUBMIT (Python or CLI)
    Failure controller (heartbeat 30s timeout → re-queue; quarantine flaky)
         │
 COLLECT
-  compute4me results <job_id> --out ./out   (top-K retained for Search)
+  compute4me fetch <job_id> --out ./out   (top-K retained for Search)
 ```
 
 ## Lifecycle states

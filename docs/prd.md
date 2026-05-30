@@ -273,7 +273,7 @@ Each task is self-contained: prerequisites, deliverables, file paths, and accept
 #### T01 — Repo skeleton + packaging + image
 **Prereqs:** none.
 **Deliverables:** `pyproject.toml` (uv, Python 3.13), `src/compute4me/` package per §5, single `Dockerfile` with `serve` and `worker` entrypoints, `Makefile` (`dev`, `test`, `image`, `e2e`). Empty module files with docstrings.
-**Acceptance:** `uv sync` resolves; `docker build` produces an image; `compute4me --help` lists `serve/token/status/results/cancel/worker`.
+**Acceptance:** `uv sync` resolves; `docker build` produces an image; `compute4me --help` lists the commands from [architecture/wire-protocol.md §4.1](./architecture/wire-protocol.md) (`serve`, `worker`, `token`, `status`, `progress`, `logs`, `events`, `fetch`, `jobs`, `cancel`, plus `version`/`help`).
 
 #### T02 — Core types (`types.py`)
 **Prereqs:** T01.

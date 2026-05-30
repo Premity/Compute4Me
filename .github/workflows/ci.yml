@@ -1,0 +1,55 @@
+# CI quality gates — three required jobs (ci-test, ci-lint, ci-types) per CONTRIBUTING.md.
+# Coverage is reported, not gated. Runs on GitHub-hosted runners with no GPU/Docker, so
+# the test job excludes requires_docker / requires_gpu markers.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci-test:
+    name: ci-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Run tests (no real Docker/GPU)
+        run: uv run pytest -m "not requires_docker and not requires_gpu" --cov=compute4me --cov-report=term-missing
+
+  ci-lint:
+    name: ci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Lint + format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+  ci-types:
+    name: ci-types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Type check
+        run: uv run mypy --strict src/

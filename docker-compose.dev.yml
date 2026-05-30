@@ -1,0 +1,29 @@
+# Local dev topology: one Master + two fake Workers for the E2E smoke test.
+# The fake Workers carry no GPU and use a fake container runner (tests/fakes/), so this
+# runs anywhere. Fleshed out alongside the worker daemon (T08) and E2E test (T17).
+
+services:
+  master:
+    build: .
+    command: ["serve", "--room", "dev"]
+    ports:
+      - "8443:8443"
+    volumes:
+      - master-data:/data
+
+  # Two Worker placeholders. Token wiring lands with T05/T08; until then this file
+  # documents the intended local topology.
+  worker-1:
+    build: .
+    command: ["worker"]
+    depends_on:
+      - master
+
+  worker-2:
+    build: .
+    command: ["worker"]
+    depends_on:
+      - master
+
+volumes:
+  master-data:
