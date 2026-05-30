@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: accepted; amended by [ADR-0014](./0014-admin-tokens-for-submission.md)
 ---
 
 # Closed-Membership Rooms via Invite Tokens
+
+> **Amendment ([ADR-0014](./0014-admin-tokens-for-submission.md)):** the Token machinery is extended with an `admin: bool` capability bit. Worker-only tokens (default) authorize Room joining; admin tokens additionally authorize Job submission via the Python API. Same trust model; one more capability.
 
 ## Context
 

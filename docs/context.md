@@ -98,7 +98,7 @@ The **Scheduler**'s estimate of how long a **Task** will take on a given **Worke
 ## Implementation stack (v0.1)
 
 - **Python throughout** (Master, Worker daemon, client lib) — matches the PyTorch/Optuna ecosystem; the Master relays and schedules rather than number-crunches, so no perf case for Go/Rust.
-- **Transport**: a single persistent *outbound* **WebSocket** Worker→Master for the control channel (heartbeats, Task dispatch, cancellation, progress); separate **HTTP** GETs for bulk Artifact pulls. WebSocket chosen over gRPC because HTTP/2 is frequently mangled by proxies/firewalls — and surviving firewalls is the whole premise (see [ADR-0003](./docs/adr/0003-master-on-data-plane.md)).
+- **Transport**: a single persistent *outbound* **WebSocket** Worker→Master for the control channel (heartbeats, Task dispatch, cancellation, progress); separate **HTTP** GETs for bulk Artifact pulls. WebSocket chosen over gRPC because HTTP/2 is frequently mangled by proxies/firewalls — and surviving firewalls is the whole premise (see [ADR-0003](./adr/0003-master-on-data-plane.md)).
 - **TLS**: Master holds a self-signed cert; its fingerprint rides in every **Invite Token** and the Worker pins it. No CA, no domain, no Let's Encrypt. Not mutual — the token already authenticates the Worker.
 - **Master state**: SQLite file.
 - **Interfaces**: Python API primary for job submission (`from compute4me import submit`); CLI primary for ops (`compute4me serve` / token issue / status / results). Shared client library.
@@ -120,4 +120,4 @@ The **Scheduler**'s estimate of how long a **Task** will take on a given **Worke
 - Byzantine-robust aggregation. Trust is established out-of-band via **Invite Token** issuance; bug-level defenses (gradient-norm sanity checks) are sufficient for closed-membership rooms.
 - Fully-open / public **Rooms** where anyone can join without a token.
 - Cryptographic privacy (secure aggregation, differential privacy, homomorphic encryption).
-- Multi-tier / hierarchical aggregation (see [ADR-0001](./docs/adr/0001-flat-master-not-hierarchical.md)).
+- Multi-tier / hierarchical aggregation (see [ADR-0001](./adr/0001-flat-master-not-hierarchical.md)).
