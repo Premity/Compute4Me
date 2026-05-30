@@ -107,6 +107,20 @@ def serve_shard(hash: str, shard: ShardDescriptor) -> bytes
 
 Master is the **origin** for all Artifacts in v0.1. Worker-to-Worker artifact transfer is deferred to v0.5 (P2P swarm). See [ADR-0012](../adr/0012-content-addressed-artifacts.md), [ROADMAP v0.5](../roadmap.md#v05--wan).
 
+### Master transport TLS — `master/server.py` (cert)
+
+```python
+def ensure_cert(data_dir) -> MasterCert
+    # Load the Master's self-signed cert from data_dir, generating (key + cert) on first
+    # run. Idempotent — reuses the existing cert so the fingerprint is stable across
+    # restarts and already-issued tokens stay valid.
+
+def fingerprint_of(cert_path) -> str   # sha256 hex of the DER cert — the value pinned in tokens
+def server_ssl_context(cert) -> ssl.SSLContext   # TLS server context presenting the cert
+```
+
+Self-signed (no CA, no domain — ADR-0011): subject == issuer, 2048-bit RSA, 10y validity (rotation is an ops action, [operations.md](./operations.md), not an expiry concern). The `MasterCert.fingerprint` feeds the [token service](#token-service--mastertokenspy)'s `cert_fp`; the WS server (T07) serves over `server_ssl_context`.
+
 ### Master state store — `master/state.py`
 
 ```python
@@ -191,7 +205,7 @@ Worker-side cache is content-addressed (same hash → same local path) — repea
 
 The top-level loop, not a module with discrete signatures. Responsibilities:
 
-- Open outbound WSS connection to Master; pin Master cert fingerprint from the Invite Token.
+- Open outbound WSS connection to Master; pin Master cert fingerprint from the Invite Token. The cert is self-signed so chain/hostname verification is off (`pinning_ssl_context`); after the handshake, `verify_fingerprint(peer_cert_der, pinned)` compares the presented cert's sha256 to the token's value and raises `CertPinError` on mismatch (ADR-0011).
 - Build profile + send `join`. Handle `join_ack` / `join_reject`.
 - Heartbeat every 10s.
 - Receive `task_assign` → call `cache.ensure_cached(...)` for inputs → call `runner.run(...)` → send `task_result`.
