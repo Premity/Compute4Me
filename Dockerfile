@@ -14,20 +14,28 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # Install dependencies first (cached unless pyproject/lock changes), then the project.
+# --mount=type=cache keeps uv's download cache on a reusable BuildKit mount (outside the
+# image), so rebuilds skip re-downloads without bloating the layers or the host disk.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
 COPY src/ ./src/
 COPY README.md ./
-RUN uv sync --frozen --no-dev
+# --no-editable bakes the package into .venv/site-packages instead of an editable .pth
+# pointing back at /app/src — so the runtime stage can copy just the venv and stay
+# self-contained (the source tree is not present at runtime).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable
 
 # --- runtime: slim image with just the venv and the docker CLI ---
 FROM python:3.13-slim AS runtime
 
-# The Worker shells out to `docker run` for user images via the mounted socket
-# (see SECURITY.md). The Master uses it too when running locally; harmless if unused.
+# The Worker shells out to `docker` for user images via the mounted host socket
+# (see SECURITY.md). Only the CLI client is needed — the daemon lives on the host — so
+# install docker-cli, not the full docker.io engine package (much smaller).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends docker.io \
+    && apt-get install -y --no-install-recommends docker-cli \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/.venv /app/.venv
