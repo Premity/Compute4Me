@@ -177,11 +177,21 @@ The `admin` bit reuses the token machinery for Job submission instead of inventi
 ## Internal task representation
 
 ```python
+class ShardDescriptor(BaseModel):
+    kind: Literal["whole", "index-range", "file-list"]
+    start: Optional[int] = None   # index-range: [start, end)
+    end: Optional[int] = None
+    files: Optional[list[str]] = None  # file-list
+
+class ArtifactRef(BaseModel):
+    hash: str
+    shard: Optional[ShardDescriptor] = None   # None = the whole Artifact
+
 class Task(BaseModel):
     id: str
     job_id: str
     args: dict                    # passed via C4M_CONFIG
-    input_refs: list[ArtifactRef] # ArtifactRef = (hash, optional ShardDescriptor)
+    input_refs: list[ArtifactRef]
     requires: TaskRequires        # min_vram_mb, gpu_required, est_work_units
     attempts: int = 0
 
@@ -190,6 +200,11 @@ class TaskRequires(BaseModel):
     gpu_required: bool
     est_work_units: float         # input to the cost model (samples * passes, or similar)
 
+class TaskError(BaseModel):
+    message: str
+    oom: bool = False             # drives OOM-promotion (retry on a Worker with >=2x VRAM)
+    exit_code: Optional[int] = None  # the user container's exit status, when applicable
+
 class TaskResult(BaseModel):
     task_id: str
     status: Literal["succeeded", "failed"]
@@ -197,6 +212,8 @@ class TaskResult(BaseModel):
     output_refs: Optional[list[str]]  # artifact hashes (for Map outputs / checkpoints)
     error: Optional[str]
 ```
+
+`TaskError` is the classified failure the [failure controller](./modules.md#failure-controller--masterfailurepy) consumes (`classify_failure`); the lighter `TaskResult.error` string is what a Worker reports on the wire. `ShardDescriptor` backs the [`/artifacts/{hash}/shard`](./wire-protocol.md#3-artifact-channel-worker--master-http) query.
 
 ## Versioning of the data model
 
