@@ -26,6 +26,8 @@ def release(jti: str) -> None
 
 Pure given an in-memory revocation set + per-token counters. Unit-testable with a fixed signing key. See [ADR-0002](../adr/0002-closed-membership-rooms.md), [ADR-0011](../adr/0011-tls-fingerprint-in-token.md).
 
+Realized as a `TokenService` holding the state store plus an injected **signing key** and **Master cert fingerprint** (the cert itself is generated in T06; injecting both keeps the service pure). Tokens are signed HS256 with the standard `exp`/`jti` registered claims so the library enforces expiry and revocation keys off `jti`; `verify` raises `InvalidToken` on bad signature, expiry, or a revoked `jti`. Token metadata is durable, so the revocation set is rebuilt from the store on construction (revocations survive restart); the per-`jti` live-Worker counts are in-memory (every Worker re-joins after a restart). `issue` ensures the Room row exists before persisting the token (the `tokens.room_id` FK; the Master also auto-creates the Room on `serve --room` — wire-protocol.md §4.10), with `id == name` in v0.1's single-operator model.
+
 ### Cost model — `master/cost_model.py`
 
 ```python
