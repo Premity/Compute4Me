@@ -9,20 +9,42 @@ Populated across T06 (TLS), T07 (WS server), T10 (bandwidth probe).
 T06 — TLS: the Master holds a self-signed certificate (no CA, no domain); its sha256
 fingerprint rides inside every Invite Token and the Worker pins it on connect. This module
 generates and persists that cert and computes the fingerprint the token service embeds.
+
+T07 — WS server: ``ControlServer`` accepts one persistent WSS connection per Worker over
+that cert, parses inbound ``WorkerMessage``s, and can push ``MasterMessage``s via a
+per-Worker send queue. It does the minimal ``join`` work needed to own a connection's
+identity — verify the token and ``admit`` (reserve a slot) — so it can ``release`` on
+disconnect; the full handshake (``join_ack``/``join_reject``, worker_id assignment, the
+heartbeat/reconnect loop) lands in T08.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime as dt
 import hashlib
+import json
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from pydantic import ValidationError
+from websockets.asyncio.server import Server, ServerConnection, serve
+from websockets.exceptions import ConnectionClosed
+
+from compute4me.master.tokens import InvalidToken
+from compute4me.proto.messages import Join, parse_worker_message
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+    from compute4me.master.tokens import TokenService
 
 _CERT_FILE = "master-cert.pem"
 _KEY_FILE = "master-key.pem"
@@ -103,3 +125,111 @@ def _generate_cert(cert_path: Path, key_path: Path) -> None:
     cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     # The key authenticates the Master; keep it owner-only.
     key_path.chmod(0o600)
+
+
+# --- WS control server (T07) -----------------------------------------------
+
+
+@dataclass
+class _Conn:
+    """A live Worker connection: its socket, jti (once admitted), and outbound queue."""
+
+    ws: ServerConnection
+    send_queue: asyncio.Queue[BaseModel] = field(default_factory=asyncio.Queue)
+    jti: str | None = None  # set once a valid `join` is admitted; what we release on close
+
+
+class ControlServer:
+    """The Master's WebSocket control plane: one persistent connection per Worker.
+
+    Verifies the Invite Token on ``join`` and reserves a slot via the token service
+    (``admit``), tracking the connection so it can ``release`` the slot when the socket
+    closes. Inbound ``WorkerMessage``s are parsed and recorded; ``MasterMessage``s are
+    pushed through a per-Worker send queue. The full join handshake (ack/reject replies,
+    worker_id assignment, heartbeat timeouts) is layered on in T08.
+    """
+
+    def __init__(self, tokens: TokenService, cert: MasterCert) -> None:
+        self._tokens = tokens
+        self._cert = cert
+        self._conns: dict[int, _Conn] = {}
+        self._server: Server | None = None
+
+    @property
+    def connected_count(self) -> int:
+        """Number of currently-open Worker connections."""
+        return len(self._conns)
+
+    def is_connected(self, jti: str) -> bool:
+        """Whether an admitted connection for ``jti`` is currently open."""
+        return any(c.jti == jti for c in self._conns.values())
+
+    def push(self, conn_id: int, message: BaseModel) -> None:
+        """Enqueue a ``MasterMessage`` to a connected Worker (drained by its writer task)."""
+        self._conns[conn_id].send_queue.put_nowait(message)
+
+    async def serve(self, host: str, port: int) -> None:
+        """Start listening for WSS connections (runs until the server is closed)."""
+        ssl_ctx = server_ssl_context(self._cert)
+        self._server = await serve(self._handle, host, port, ssl=ssl_ctx)
+
+    async def close(self) -> None:
+        """Stop the listener and drop all connections."""
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+
+    @property
+    def port(self) -> int:
+        """The bound port (useful when listening on port 0 / ephemeral)."""
+        assert self._server is not None, "serve() must be called before reading port"
+        # websockets exposes the underlying asyncio server's sockets.
+        sock = next(iter(self._server.sockets))
+        return int(sock.getsockname()[1])
+
+    async def _handle(self, ws: ServerConnection) -> None:
+        """Per-connection lifecycle: register, read+dispatch until close, then release."""
+        conn = _Conn(ws=ws)
+        conn_id = id(conn)
+        self._conns[conn_id] = conn
+        writer = asyncio.create_task(self._writer(conn))
+        try:
+            async for raw in ws:
+                self._dispatch(conn, raw)
+        except ConnectionClosed:
+            pass
+        finally:
+            writer.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await writer
+            # Free the token slot reserved at admit time (T05 release).
+            if conn.jti is not None:
+                self._tokens.release(conn.jti)
+            self._conns.pop(conn_id, None)
+
+    def _dispatch(self, conn: _Conn, raw: str | bytes) -> None:
+        """Parse one inbound frame and act on it; malformed/unknown frames are dropped."""
+        try:
+            data = json.loads(raw)
+            message = parse_worker_message(data)
+        except (json.JSONDecodeError, ValidationError):
+            return  # unknown/garbled message — tolerated (wire-protocol.md §Versioning)
+        if isinstance(message, Join):
+            self._on_join(conn, message)
+        # heartbeat / task_progress / task_result / profile_update: tracked by the mere
+        # fact of an open, admitted connection in T07; their handlers arrive in T08+.
+
+    def _on_join(self, conn: _Conn, message: Join) -> None:
+        """Minimal join: verify the token and reserve a slot; record the jti for release."""
+        try:
+            claims = self._tokens.verify(message.token)
+        except InvalidToken:
+            return  # T08 replies with join_reject; T07 simply doesn't admit.
+        if self._tokens.admit(claims):
+            conn.jti = claims.jti
+
+    async def _writer(self, conn: _Conn) -> None:
+        """Drain the per-Worker send queue to the socket as JSON frames."""
+        while True:
+            message = await conn.send_queue.get()
+            await conn.ws.send(message.model_dump_json())
