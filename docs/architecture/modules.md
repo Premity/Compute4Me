@@ -107,9 +107,10 @@ def serve_shard(hash: str, shard: ShardDescriptor) -> bytes
 
 Master is the **origin** for all Artifacts in v0.1. Worker-to-Worker artifact transfer is deferred to v0.5 (P2P swarm). See [ADR-0012](../adr/0012-content-addressed-artifacts.md), [ROADMAP v0.5](../roadmap.md#v05--wan).
 
-### Master transport TLS — `master/server.py` (cert)
+### Master transport — `master/server.py`
 
 ```python
+# TLS (T06)
 def ensure_cert(data_dir) -> MasterCert
     # Load the Master's self-signed cert from data_dir, generating (key + cert) on first
     # run. Idempotent — reuses the existing cert so the fingerprint is stable across
@@ -117,9 +118,20 @@ def ensure_cert(data_dir) -> MasterCert
 
 def fingerprint_of(cert_path) -> str   # sha256 hex of the DER cert — the value pinned in tokens
 def server_ssl_context(cert) -> ssl.SSLContext   # TLS server context presenting the cert
+
+# WS control server (T07)
+class ControlServer:
+    def __init__(self, tokens: TokenService, cert: MasterCert)
+    async def serve(host, port)          # listen for WSS connections (one per Worker)
+    async def close()                    # stop the listener, drop connections
+    def push(conn_id, message)           # enqueue a MasterMessage to a Worker (per-Worker send queue)
+    connected_count: int                 # currently-open connections
+    def is_connected(jti) -> bool        # is an admitted connection for this jti open?
 ```
 
-Self-signed (no CA, no domain — ADR-0011): subject == issuer, 2048-bit RSA, 10y validity (rotation is an ops action, [operations.md](./operations.md), not an expiry concern). The `MasterCert.fingerprint` feeds the [token service](#token-service--mastertokenspy)'s `cert_fp`; the WS server (T07) serves over `server_ssl_context`.
+Self-signed cert (no CA, no domain — ADR-0011): subject == issuer, 2048-bit RSA, 10y validity (rotation is an ops action, [operations.md](./operations.md), not an expiry concern). The `MasterCert.fingerprint` feeds the [token service](#token-service--mastertokenspy)'s `cert_fp`.
+
+`ControlServer` accepts one persistent WSS connection per Worker over that cert, parses inbound [`WorkerMessage`](./wire-protocol.md#worker--master)s, and pushes [`MasterMessage`](./wire-protocol.md#master--worker)s through a per-Worker `asyncio.Queue`. On `join` it does the minimal work needed to own a connection's identity — `verify` the token + `admit` (reserve a slot) — recording the `jti` so it can `release` on disconnect. The full handshake (`join_ack`/`join_reject` replies, worker_id assignment, heartbeat-timeout liveness, reconnect) lands in T08.
 
 ### Master state store — `master/state.py`
 
