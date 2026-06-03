@@ -20,7 +20,8 @@ Map of **T-task → test file(s) → markers**. Updated per PR — every new tes
 | T04 | tests/unit/test_messages.py | `task("T04")`, `unit` |
 | T05 | tests/unit/test_tokens.py | `task("T05")`, `unit` |
 | T06 | tests/unit/test_tls.py | `task("T06")`, `unit` |
+| T07 | tests/integration/test_ws_server.py | `task("T07")`, `integration` |
 
 <!-- Template row:
-| T07 | tests/unit/test_ws_server.py | `task("T07")`, `unit` |
+| T08 | tests/integration/test_daemon_join.py | `task("T08")`, `integration` |
 -->
