@@ -26,6 +26,7 @@ import datetime as dt
 import hashlib
 import json
 import ssl
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -38,8 +39,10 @@ from pydantic import ValidationError
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from compute4me.master.state import StateStore
 from compute4me.master.tokens import InvalidToken
-from compute4me.proto.messages import Join, parse_worker_message
+from compute4me.proto.messages import Join, JoinAck, JoinReject, parse_worker_message
+from compute4me.types import Worker
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -132,26 +135,28 @@ def _generate_cert(cert_path: Path, key_path: Path) -> None:
 
 @dataclass
 class _Conn:
-    """A live Worker connection: its socket, jti (once admitted), and outbound queue."""
+    """A live Worker connection: its socket, identity (once admitted), and outbound queue."""
 
     ws: ServerConnection
     send_queue: asyncio.Queue[BaseModel] = field(default_factory=asyncio.Queue)
     jti: str | None = None  # set once a valid `join` is admitted; what we release on close
+    worker_id: str | None = None  # assigned on join_ack
 
 
 class ControlServer:
     """The Master's WebSocket control plane: one persistent connection per Worker.
 
-    Verifies the Invite Token on ``join`` and reserves a slot via the token service
-    (``admit``), tracking the connection so it can ``release`` the slot when the socket
-    closes. Inbound ``WorkerMessage``s are parsed and recorded; ``MasterMessage``s are
-    pushed through a per-Worker send queue. The full join handshake (ack/reject replies,
-    worker_id assignment, heartbeat timeouts) is layered on in T08.
+    On ``join`` it verifies the Invite Token, reserves a slot (``admit``), assigns a
+    ``worker_id``, persists the Worker, and replies ``join_ack``; a bad/expired/revoked
+    token or an exhausted ``max_workers`` yields a ``join_reject`` with a reason. The slot
+    is released when the socket closes. Inbound ``WorkerMessage``s are parsed and recorded;
+    ``MasterMessage``s are pushed through a per-Worker send queue.
     """
 
-    def __init__(self, tokens: TokenService, cert: MasterCert) -> None:
+    def __init__(self, tokens: TokenService, cert: MasterCert, store: StateStore) -> None:
         self._tokens = tokens
         self._cert = cert
+        self._store = store
         self._conns: dict[int, _Conn] = {}
         self._server: Server | None = None
 
@@ -220,13 +225,36 @@ class ControlServer:
         # fact of an open, admitted connection in T07; their handlers arrive in T08+.
 
     def _on_join(self, conn: _Conn, message: Join) -> None:
-        """Minimal join: verify the token and reserve a slot; record the jti for release."""
+        """Full join handshake: verify token, admit, assign worker_id, persist, reply.
+
+        Replies ``join_reject`` (with a reason) for a bad/expired/revoked token or an
+        exhausted ``max_workers``; otherwise assigns a ``worker_id``, persists the Worker,
+        and replies ``join_ack``. The reserved slot is freed by ``release`` on disconnect.
+        """
         try:
             claims = self._tokens.verify(message.token)
-        except InvalidToken:
-            return  # T08 replies with join_reject; T07 simply doesn't admit.
-        if self._tokens.admit(claims):
-            conn.jti = claims.jti
+        except InvalidToken as exc:
+            conn.send_queue.put_nowait(JoinReject(reason=str(exc)))
+            return
+        if not self._tokens.admit(claims):
+            conn.send_queue.put_nowait(JoinReject(reason="max_workers exceeded"))
+            return
+
+        worker_id = uuid.uuid4().hex
+        conn.jti = claims.jti
+        conn.worker_id = worker_id
+        self._store.save_worker(
+            Worker(
+                id=worker_id,
+                room_id=claims.room,
+                token_jti=claims.jti,
+                host_id=message.profile.host_id,
+                profile=message.profile,
+                status="idle",
+                joined_at=dt.datetime.now(dt.UTC).isoformat(),
+            )
+        )
+        conn.send_queue.put_nowait(JoinAck(worker_id=worker_id))
 
     async def _writer(self, conn: _Conn) -> None:
         """Drain the per-Worker send queue to the socket as JSON frames."""
