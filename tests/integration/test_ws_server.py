@@ -19,7 +19,7 @@ from websockets.asyncio.client import connect
 from compute4me.master.server import ControlServer, ensure_cert
 from compute4me.master.state import StateStore
 from compute4me.master.tokens import TokenService
-from compute4me.proto.messages import Heartbeat, Join
+from compute4me.proto.messages import Heartbeat, Join, JoinAck
 
 _KEY = "test-signing-key-padded-to-32-bytes-min"
 
@@ -48,13 +48,12 @@ async def _wait_until(predicate: object, timeout: float = 2.0) -> bool:
 def test_client_connects_heartbeats_and_release_on_close(tmp_path: Path) -> None:
     async def scenario() -> None:
         cert = ensure_cert(tmp_path)
-        tokens = TokenService(
-            signing_key=_KEY, cert_fp=cert.fingerprint, store=StateStore(":memory:")
-        )
+        store = StateStore(":memory:")
+        tokens = TokenService(signing_key=_KEY, cert_fp=cert.fingerprint, store=store)
         token = tokens.issue(room="lab", max_workers=1, ttl=timedelta(days=30))
         jti = tokens.verify(token).jti
 
-        server = ControlServer(tokens=tokens, cert=cert)
+        server = ControlServer(tokens=tokens, cert=cert, store=store)
         await server.serve("127.0.0.1", 0)
         url = f"wss://127.0.0.1:{server.port}"
 
@@ -87,19 +86,21 @@ def test_server_can_push_to_connected_worker(tmp_path: Path) -> None:
         from compute4me.proto.messages import BandwidthProbe, parse_master_message
 
         cert = ensure_cert(tmp_path)
-        tokens = TokenService(
-            signing_key=_KEY, cert_fp=cert.fingerprint, store=StateStore(":memory:")
-        )
+        store = StateStore(":memory:")
+        tokens = TokenService(signing_key=_KEY, cert_fp=cert.fingerprint, store=store)
         token = tokens.issue(room="lab", max_workers=1, ttl=timedelta(days=30))
         jti = tokens.verify(token).jti
 
-        server = ControlServer(tokens=tokens, cert=cert)
+        server = ControlServer(tokens=tokens, cert=cert, store=store)
         await server.serve("127.0.0.1", 0)
         url = f"wss://127.0.0.1:{server.port}"
 
         try:
             async with connect(url, ssl=_client_ssl()) as ws:
                 await ws.send(Join(token=token, profile=_profile_json()).model_dump_json())
+                # The handshake reply (join_ack) arrives first; drain it.
+                ack = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                assert isinstance(parse_master_message(_loads(ack)), JoinAck)
                 assert await _wait_until(lambda: server.is_connected(jti))
 
                 # Push a MasterMessage through the per-Worker send queue.
