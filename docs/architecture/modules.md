@@ -131,7 +131,7 @@ class ControlServer:
 
 Self-signed cert (no CA, no domain — ADR-0011): subject == issuer, 2048-bit RSA, 10y validity (rotation is an ops action, [operations.md](./operations.md), not an expiry concern). The `MasterCert.fingerprint` feeds the [token service](#token-service--mastertokenspy)'s `cert_fp`.
 
-`ControlServer` accepts one persistent WSS connection per Worker over that cert, parses inbound [`WorkerMessage`](./wire-protocol.md#worker--master)s, and pushes [`MasterMessage`](./wire-protocol.md#master--worker)s through a per-Worker `asyncio.Queue`. On `join` it does the minimal work needed to own a connection's identity — `verify` the token + `admit` (reserve a slot) — recording the `jti` so it can `release` on disconnect. The full handshake (`join_ack`/`join_reject` replies, worker_id assignment, heartbeat-timeout liveness, reconnect) lands in T08.
+`ControlServer` accepts one persistent WSS connection per Worker over that cert, parses inbound [`WorkerMessage`](./wire-protocol.md#worker--master)s, and pushes [`MasterMessage`](./wire-protocol.md#master--worker)s through a per-Worker `asyncio.Queue`. On `join` (T08) it `verify`s the token, `admit`s a slot, assigns a `worker_id`, persists the Worker (`status='idle'`) via the state store, and replies `join_ack`; a bad/expired/revoked token or an exhausted `max_workers` yields a `join_reject` carrying a reason. The reserved slot is `release`d when the socket closes. Heartbeat-timeout liveness (mark `down` after 30s) is the [failure controller](#failure-controller--masterfailurepy)'s job (T18).
 
 ### Master state store — `master/state.py`
 
@@ -223,6 +223,8 @@ The top-level loop, not a module with discrete signatures. Responsibilities:
 - Receive `task_assign` → call `cache.ensure_cached(...)` for inputs → call `runner.run(...)` → send `task_result`.
 - Receive `task_cancel` → SIGTERM (30s grace) → SIGKILL the user container.
 - Reconnect with backoff on transient drops.
+
+Realized (T08) as `WorkerDaemon(master_url, token, cert_fp, profile)`. `connect_once()` runs one session: open the WSS connection (`pinning_ssl_context`), pin the Master cert (`verify_fingerprint` on the presented cert), send `join` with the Capability Profile, await `join_ack` (records `worker_id`) or `join_reject` (raises `JoinRejected` with the reason), then heartbeat on an interval until the socket drops. `run(max_sessions=None)` is the reconnect loop: clean sessions reset the backoff, transient drops back off exponentially (1s→30s), and a `join_reject` is terminal (propagates — retrying won't fix the token). The `profile` is injected so the daemon is testable without hardware probes; T09's profiler supplies the real `profile()`.
 
 ## Shared / client-side modules
 
