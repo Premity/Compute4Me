@@ -107,6 +107,18 @@ docker run -d \
 | `--max-vram-mb N` | All available | Caps how much VRAM the Worker offers — e.g., contribute 4 GB of an 8 GB card and reserve the rest for your desktop |
 | `-d` | foreground | Detach to run as a daemon |
 
+### Throughput benchmark dependency (`bench` extra)
+
+The Worker advertises a `throughput_ref` (samples/sec on a fixed ResNet18 micro-benchmark) so the Scheduler can compare heterogeneous hosts. That benchmark — and *only* that benchmark — needs PyTorch. Real training/inference runs inside the **user's** container, which carries its own ML stack (the [Container Contract](./wire-protocol.md#1-container-contract-masterworker--user-image), ADR-0006), so torch is **not** baked into the Worker image (keeping it lean).
+
+Install the CUDA-matched build **once per host** at setup time — not at container start, so firewall-constrained Workers never download hundreds of MB at runtime:
+
+```bash
+scripts/setup-worker.sh   # detects CUDA via nvidia-smi, installs the matching torch (or CPU build)
+```
+
+Without it, the Worker runs fine but `run_micro_benchmark` raises `BenchmarkUnavailable`; the rest of the profile (GPU/CPU/RAM/disk/cache) is gathered regardless.
+
 ### Running multiple Workers on one host
 
 One container = one Worker. To contribute multiple GPUs from the same host, run multiple Worker containers, each pinned to a different GPU:

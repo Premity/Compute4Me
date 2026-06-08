@@ -22,7 +22,8 @@ Map of **T-task → test file(s) → markers**. Updated per PR — every new tes
 | T06 | tests/unit/test_tls.py | `task("T06")`, `unit` |
 | T07 | tests/integration/test_ws_server.py | `task("T07")`, `integration` |
 | T08 | tests/integration/test_daemon_join.py | `task("T08")`, `integration` |
+| T09 | tests/unit/test_profiler.py | `task("T09")`, `unit` |
 
 <!-- Template row:
-| T09 | tests/unit/test_profiler.py | `task("T09")`, `unit` |
+| T10 | tests/unit/test_probe.py | `task("T10")`, `unit` |
 -->
