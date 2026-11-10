@@ -9,6 +9,7 @@ protocol. The async body runs under `asyncio.run` so no pytest-async plugin is n
 from __future__ import annotations
 
 import asyncio
+import json
 import ssl
 from datetime import timedelta
 from pathlib import Path
@@ -19,7 +20,7 @@ from websockets.asyncio.client import connect
 from compute4me.master.server import ControlServer, ensure_cert
 from compute4me.master.state import StateStore
 from compute4me.master.tokens import TokenService
-from compute4me.proto.messages import Heartbeat, Join, JoinAck
+from compute4me.proto.messages import Heartbeat, Join, JoinAck, parse_master_message
 
 _KEY = "test-signing-key-padded-to-32-bytes-min"
 
@@ -83,7 +84,7 @@ def test_client_connects_heartbeats_and_release_on_close(tmp_path: Path) -> None
 @pytest.mark.task("T07")
 def test_server_can_push_to_connected_worker(tmp_path: Path) -> None:
     async def scenario() -> None:
-        from compute4me.proto.messages import BandwidthProbe, parse_master_message
+        from compute4me.proto.messages import BandwidthProbe
 
         cert = ensure_cert(tmp_path)
         store = StateStore(":memory:")
@@ -113,6 +114,50 @@ def test_server_can_push_to_connected_worker(tmp_path: Path) -> None:
             await server.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.integration
+@pytest.mark.task("T07")
+def test_bad_frames_are_dropped_with_a_warning_and_no_secrets(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # wire-protocol.md §Versioning: a frame the Master can't parse is dropped and logged at
+    # WARNING. ADR-0018: the log must not echo the frame, since a join carries the token.
+    async def scenario() -> None:
+        cert = ensure_cert(tmp_path)
+        store = StateStore(":memory:")
+        tokens = TokenService(signing_key=_KEY, cert_fp=cert.fingerprint, store=store)
+        token = tokens.issue(room="lab", max_workers=1, ttl=timedelta(days=30))
+
+        server = ControlServer(tokens=tokens, cert=cert, store=store)
+        await server.serve("127.0.0.1", 0)
+        url = f"wss://127.0.0.1:{server.port}"
+
+        try:
+            async with connect(url, ssl=_client_ssl()) as ws:
+                await ws.send("this is not json")
+                await ws.send(json.dumps({"type": "no_such_type"}))
+                # A join whose profile is invalid: Pydantic's error text would echo the token.
+                await ws.send(json.dumps({"type": "join", "token": token, "profile": {}}))
+                assert await _wait_until(
+                    lambda: len([r for r in caplog.records if r.levelname == "WARNING"]) >= 3
+                )
+                # The connection survives bad frames: a valid join still succeeds.
+                await ws.send(Join(token=token, profile=_profile_json()).model_dump_json())
+                ack = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                assert isinstance(parse_master_message(_loads(ack)), JoinAck)
+        finally:
+            await server.close()
+
+    with caplog.at_level("WARNING", logger="compute4me.master.server"):
+        asyncio.run(scenario())
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("not JSON" in w for w in warnings)
+    assert any("'no_such_type'" in w for w in warnings)
+    assert any("type='join'" in w and "profile" in w for w in warnings)
+    token_text = "".join(warnings) + caplog.text
+    assert "eyJ" not in token_text  # no JWT fragment anywhere in the log
 
 
 def _profile_json() -> object:
