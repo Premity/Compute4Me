@@ -50,7 +50,7 @@ class CertPinError(Exception):
 
 
 class JoinRejected(Exception):
-    """Raised when the Master rejects the join (bad token, capacity, fingerprint)."""
+    """Raised when the Master rejects the join (bad, expired or revoked token; capacity)."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -173,8 +173,10 @@ class WorkerDaemon:
     async def run(self, *, max_sessions: int | None = None) -> None:
         """Reconnect loop: run sessions with exponential backoff after transient drops.
 
-        A ``join_reject`` is terminal (the token won't get better by retrying), so it
-        propagates. ``max_sessions`` bounds the loop for tests; ``None`` runs forever.
+        A ``join_reject`` and a :class:`CertPinError` are terminal, so they propagate: the
+        token won't get better by retrying, and the fingerprint pinned in it never starts
+        matching a different Master's cert (the token needs re-issuing). ``max_sessions``
+        bounds the loop for tests; ``None`` runs forever.
         """
         backoff = _INITIAL_BACKOFF
         sessions = 0
@@ -182,9 +184,9 @@ class WorkerDaemon:
             try:
                 await self.connect_once()
                 backoff = _INITIAL_BACKOFF  # clean session → reset backoff
-            except JoinRejected:
+            except (JoinRejected, CertPinError):
                 raise  # not transient
-            except (OSError, ConnectionClosed, CertPinError):
+            except (OSError, ConnectionClosed):
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, _MAX_BACKOFF)
             sessions += 1

@@ -25,6 +25,7 @@ import contextlib
 import datetime as dt
 import hashlib
 import json
+import logging
 import ssl
 import uuid
 from dataclasses import dataclass, field
@@ -48,6 +49,8 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
 
     from compute4me.master.tokens import TokenService
+
+logger = logging.getLogger(__name__)
 
 _CERT_FILE = "master-cert.pem"
 _KEY_FILE = "master-key.pem"
@@ -213,12 +216,37 @@ class ControlServer:
             self._conns.pop(conn_id, None)
 
     def _dispatch(self, conn: _Conn, raw: str | bytes) -> None:
-        """Parse one inbound frame and act on it; malformed/unknown frames are dropped."""
+        """Parse one inbound frame and act on it; malformed/unknown frames are dropped.
+
+        A dropped frame is logged at WARNING (wire-protocol.md §Versioning, ADR-0018) without
+        its contents: a ``join`` frame carries the Invite Token, so neither the raw frame nor
+        Pydantic's error text (which echoes input values) is logged.
+        """
         try:
             data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "dropped inbound frame: not JSON (%s at char %d), worker_id=%s",
+                exc.msg,
+                exc.pos,
+                conn.worker_id,
+            )
+            return
+        try:
             message = parse_worker_message(data)
-        except (json.JSONDecodeError, ValidationError):
-            return  # unknown/garbled message — tolerated (wire-protocol.md §Versioning)
+        except ValidationError as exc:
+            msg_type = data.get("type") if isinstance(data, dict) else None
+            problems = [
+                f"{'.'.join(str(p) for p in err['loc'])}: {err['type']}"
+                for err in exc.errors(include_url=False, include_context=False, include_input=False)
+            ]
+            logger.warning(
+                "dropped inbound frame: type=%r failed validation (%s), worker_id=%s",
+                msg_type,
+                "; ".join(problems),
+                conn.worker_id,
+            )
+            return
         if isinstance(message, Join):
             self._on_join(conn, message)
         # heartbeat / task_progress / task_result / profile_update: tracked by the mere
