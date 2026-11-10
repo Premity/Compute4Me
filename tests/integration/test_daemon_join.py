@@ -20,7 +20,7 @@ from compute4me.master.server import ControlServer, MasterCert, ensure_cert
 from compute4me.master.state import StateStore
 from compute4me.master.tokens import TokenService
 from compute4me.types import CapabilityProfile, GpuInfo
-from compute4me.worker.daemon import JoinRejected, WorkerDaemon
+from compute4me.worker.daemon import CertPinError, JoinRejected, WorkerDaemon
 
 _KEY = "test-signing-key-padded-to-32-bytes-min"
 
@@ -201,6 +201,31 @@ def test_worker_reconnects_after_transient_drop(tmp_path: Path) -> None:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(daemon.run(max_sessions=2), timeout=5.0)
             assert joins >= 1
+        finally:
+            await master.server.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.integration
+@pytest.mark.task("T08")
+def test_fingerprint_mismatch_is_terminal(tmp_path: Path) -> None:
+    # A token pinning another Master's cert never starts matching, so run() must stop with
+    # CertPinError instead of reconnecting forever (it used to retry it with backoff).
+    async def scenario() -> None:
+        master, token = await _start_master(tmp_path / "master")
+        impostor_fp = ensure_cert(tmp_path / "impostor").fingerprint
+        daemon = WorkerDaemon(master.url, token, impostor_fp, _profile())
+        try:
+            with pytest.raises(CertPinError):
+                await asyncio.wait_for(daemon.run(), timeout=5.0)
+            assert daemon.worker_id is None
+            # The Worker hung up before joining; the Master deregisters it shortly after.
+            for _ in range(200):
+                if master.server.connected_count == 0:
+                    break
+                await asyncio.sleep(0.01)
+            assert master.server.connected_count == 0
         finally:
             await master.server.close()
 
