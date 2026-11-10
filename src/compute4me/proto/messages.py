@@ -1,16 +1,15 @@
 """Pydantic models for every WebSocket control-channel message.
 
 Defines the Worker-to-Master and Master-to-Worker messages from
-docs/architecture/wire-protocol.md §2 as a discriminated union on ``type``. Unknown
-message types are tolerated for additive forward-compatibility (wire-protocol.md
-§Versioning).
+docs/architecture/wire-protocol.md §2 as a discriminated union on ``type``.
 
 Each message is a Pydantic model with a ``Literal`` ``type`` tag; the two directions are
 modelled as discriminated unions (``WorkerMessage``, ``MasterMessage``) keyed on that tag.
 ``parse_worker_message`` / ``parse_master_message`` validate an incoming JSON object and
 raise ``ValidationError`` on an unknown ``type``. Per wire-protocol.md §Versioning, unknown
 *fields* are ignored (additive evolution) while an unknown *discriminator* is rejected: a
-Worker only ever sends a type the Master can name, and vice versa.
+Worker only ever sends a type the Master can name, and vice versa. The receiver decides
+what a rejection means; the Master drops the frame and logs a WARNING.
 """
 
 from __future__ import annotations
@@ -88,7 +87,7 @@ class JoinAck(BaseModel):
 
 
 class JoinReject(BaseModel):
-    """Join refused: bad/expired/revoked token, max_workers exceeded, or fingerprint mismatch."""
+    """Join refused: bad/expired/revoked token or max_workers exceeded."""
 
     type: Literal["join_reject"] = "join_reject"
     reason: str
