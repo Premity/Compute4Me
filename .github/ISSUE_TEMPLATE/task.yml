@@ -1,0 +1,36 @@
+name: Task
+description: One task from docs/plan.md. The card is the spec; this issue tracks who, when and blockers.
+title: "T__: "
+labels: []
+body:
+  - type: input
+    id: card
+    attributes:
+      label: Task card
+      description: Path to the card (or the stub's anchor in plan.md for P3–P5 tasks).
+      placeholder: docs/tasks/T10-bandwidth-probe.md
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - P1 — Control-plane bootstrap
+        - P2 — Job execution core
+        - P3 — Reliability
+        - P4 — Interfaces & observability
+        - P5 — Eval & research harness
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      description: Task IDs (and issue numbers once they exist).
+      placeholder: "T31 (#13)"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything not in the card — blockers, hand-over notes from a previous sitting, hardware needed.

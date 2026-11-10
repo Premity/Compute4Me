@@ -4,11 +4,11 @@
 
 ## Status
 
-**v0.1 — in development.** Greenfield: the design is done; implementation is starting. See [docs/prd.md](./docs/prd.md) for the v0.1 milestone scope and acceptance criteria, and [docs/roadmap.md](./docs/roadmap.md) for what comes after.
+**v0.1, in development.** P0 (scaffolding) is done and P1 (control-plane bootstrap) is underway: tokens, TLS pinning, the WebSocket transport, the Worker join handshake and the capability profiler are merged (T01–T09). Next: tooling hardening, logging, the benchmark container and a runnable `serve`/`worker` (T28–T31). Live status: [docs/plan.md](./docs/plan.md). Scope and acceptance: [docs/prd.md](./docs/prd.md). After v0.1: [docs/roadmap.md](./docs/roadmap.md).
 
 ## Why this exists
 
-Researchers with scattered compute (a few lab GPUs, a CPU box, a friend's spare GPU at home) currently can't pool it easily. **Ray / Horovod / PyTorch DDP** assume an admin-provisioned cluster with SSH and firewall control. **Hivemind / SWARM** can pool internet volunteers but force the model into Decentralized Mixture-of-Experts — useless for a standard InceptionResNet. None of them know that a 24 GB RTX 3070 is 4× faster than a 6 GB GTX 1060.
+Researchers with scattered compute (a few lab GPUs, a CPU box, a friend's spare GPU at home) currently can't pool it easily. **Ray / Horovod / PyTorch DDP** assume an admin-provisioned cluster with SSH and firewall control. **Hivemind / SWARM** can pool internet volunteers but force the model into Decentralized Mixture-of-Experts — useless for a standard InceptionResNet. None of them know that an RTX 3070 is several times faster than a GTX 1060, or which machine already has the dataset cached.
 
 Compute4Me targets exactly that gap: one `docker run` to join, no firewall changes, model code stays vanilla (no `import compute4me` required), and the scheduler is **DL-aware** — it knows VRAM, throughput, and cached datasets, and places work where it'll finish soonest.
 
@@ -16,7 +16,7 @@ See [docs/research/novelty.md](./docs/research/novelty.md) for the full position
 
 ## Quick start *(once v0.1 ships)*
 
-> Compute4Me is pre-release. The commands below describe the intended UX per the v0.1 spec; they don't run yet.
+> Compute4Me is pre-release. The commands below describe the intended v0.1 UX. `serve`, `token issue` and `worker` become runnable in T31; Job submission, `status` and `fetch` arrive in P2–P4 ([plan](./docs/plan.md)).
 
 Three personas with very different setups. Pick the one that's you.
 
@@ -110,28 +110,31 @@ For the full operator surface, see [docs/architecture/wire-protocol.md](./docs/a
 
 ## Directory structure
 
-```
+```text
 .
-├── README.md                       # ← you are here
-├── LICENSE                         # Apache-2.0
-├── CONTRIBUTING.md                 # dev workflow (branches, commits, PRs, tests, manual phase)
-├── CHANGELOG.md                    # per-version release notes
-├── SECURITY.md                     # vulnerability reporting
-├── docs/
-│   ├── README.md                   # docs index — start here
-│   ├── prd.md                      # current milestone's Product Requirements Document
-│   ├── context.md                  # canonical glossary
-│   ├── roadmap.md                  # what's deferred to v0.2+
-│   ├── architecture/               # durable system reference (overview, data model, modules, wire protocol)
-│   ├── adr/                        # Architecture Decision Records
-│   ├── research/                   # literature review + positioning
-│   └── archive/                    # frozen snapshots of past-version PRDs
-└── (src/, tests/, examples/, scripts/, etc. land as code is written)
+├── README.md  LICENSE (Apache-2.0)  CONTRIBUTING.md  CHANGELOG.md  SECURITY.md  CLAUDE.md
+├── pyproject.toml  uv.lock  Makefile  Dockerfile  docker-compose.dev.yml
+├── src/compute4me/        # the package: types, proto, cli, master/, worker/, client/, sdk/
+├── tests/                 # unit/, integration/, fakes/, INDEX.md
+├── examples/              # sample user images honouring the Container Contract
+├── scripts/               # link checker, manual verification drivers
+└── docs/
+    ├── README.md          # docs index: start here
+    ├── prd.md             # what v0.1 is and when it's done
+    ├── plan.md            # order of work, task index, Definition of Done
+    ├── tasks/             # one card per task
+    ├── context.md         # canonical glossary
+    ├── roadmap.md         # what comes after v0.1
+    ├── architecture/      # durable reference: overview, data model, modules, wire, ops, test map
+    ├── adr/               # Architecture Decision Records
+    ├── background/        # challenges faced
+    ├── research/          # related work and positioning
+    └── archive/           # past versions' PRDs
 ```
 
 ## How it works (in one paragraph)
 
-A **Master** process opens a **Room** and issues **Invite Tokens**. A contributor runs one Docker container with a token and becomes a **Worker** — connecting *outbound only* to the Master, with no inbound ports or SSH. Each Worker advertises a **Capability Profile** (GPU, VRAM, throughput micro-benchmark, cached datasets, bandwidth). The researcher submits a **Job** — either a **Map** (containerized batch over data shards) or a **Search** (containerized batch over config space). The Master's **Scheduler** assigns work via best-fit placement: faster Workers get heavier Tasks, VRAM-infeasible Tasks are filtered, cached data is preferred. Workers run user images per the **Container Contract** (env-vars-in, files-out — no `import compute4me` required), report results, and stay idle for more.
+A **Master** process opens a **Room** and issues **Invite Tokens**. A contributor runs one Docker container with a token and becomes a **Worker** — connecting *outbound only* to the Master, with no inbound ports or SSH. Each Worker advertises a **Capability Profile** (GPU, VRAM, a measured throughput benchmark, cached datasets, bandwidth). The researcher submits a **Job** — either a **Map** (containerized batch over data shards) or a **Search** (containerized batch over config space). The Master's **Scheduler** assigns work via best-fit placement: faster Workers get heavier Tasks, VRAM-infeasible Tasks are filtered, cached data is preferred. Workers run user images per the **Container Contract** (env-vars-in, files-out — no `import compute4me` required), report results, and stay idle for more.
 
 For the full picture: [docs/architecture/overview.md](./docs/architecture/overview.md).
 
@@ -154,7 +157,7 @@ Full registry: [docs/roadmap.md](./docs/roadmap.md).
 
 ## Contributing
 
-This is currently a one-person project with no external contributors. The development workflow (branches, commits, PRs, tests, manual verification, docs convention) is documented in [CONTRIBUTING.md](./CONTRIBUTING.md). Issue templates and a PR template ship with the repo.
+This is currently a one-person project. The workflow (task cards, branches, commits, PRs, Docker verification, docs convention) is in [CONTRIBUTING.md](./CONTRIBUTING.md); AI coding assistants start at [CLAUDE.md](./CLAUDE.md). Issue templates (task, bug, polish) and a PR template ship with the repo.
 
 If you want to discuss or contribute regardless, open an issue — the polish template fits informal feedback, the bug template fits actual broken behavior.
 

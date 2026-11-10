@@ -1,238 +1,207 @@
 # Contributing to Compute4Me
 
-This document encodes the development workflow. Currently a solo project; the discipline below is in place so the build stays organized and auditable.
+How work gets done here. Compute4Me is currently a one-person project; the discipline below keeps the build organised, auditable, and safe to hand to a coding agent.
 
-If you're returning to this project after a break, start here. If you're a coding agent picking up a task, read [docs/prd.md §11](./docs/prd.md#8-implementation-tasks-t01t27) first for the specific T-task spec, then this document for *how* to deliver it.
+> **Short version:** pick the next task in [docs/plan.md](./docs/plan.md) → read its card → settle its **Decide first** questions → branch → draft PR → `make check` → **Verify in Docker** → Ready → manual phase → squash-merge.
 
 ## Quick links
 
-- **Current milestone:** [docs/prd.md](./docs/prd.md)
-- **Glossary:** [docs/context.md](./docs/context.md)
-- **Decisions:** [docs/adr/](./docs/adr/)
-- **Architecture reference:** [docs/architecture/](./docs/architecture/)
-- **What's deferred:** [docs/roadmap.md](./docs/roadmap.md)
+| What | Where |
+|---|---|
+| What v0.1 is and when it's done | [docs/prd.md](./docs/prd.md) |
+| Order of work, Definition of Done | [docs/plan.md](./docs/plan.md) |
+| How to do one task | [docs/tasks/](./docs/tasks/README.md) |
+| Terms (canonical, not negotiable) | [docs/context.md](./docs/context.md) |
+| Why things are the way they are | [docs/adr/](./docs/adr/README.md) |
+| Which checks run where | [docs/architecture/test-map.md](./docs/architecture/test-map.md) |
+| Problems already hit | [docs/background/challenges-faced.md](./docs/background/challenges-faced.md) |
+| Guide for AI coding assistants | [CLAUDE.md](./CLAUDE.md) |
 
-## Local setup *(once code exists)*
+## Local setup
 
-Requires Python 3.13, `uv`, Docker, Git. Linux / macOS / WSL2 supported; native Windows is not.
+Requires Python 3.13 (uv installs it), [uv](https://docs.astral.sh/uv/), Docker, and Git. The Master, Worker and CLI target Linux; macOS and WSL2 work for development and as clients. Native Windows is not supported.
 
 ```bash
-git clone https://github.com/Premity/Compute4Me.git
-cd Compute4Me
-uv sync                        # creates .venv, installs deps
-uv run pre-commit install     # installs git hooks (ruff + mypy + md link check)
-uv run pytest                 # full test suite (runs with markers — see Testing below)
+git clone https://github.com/Premity/Compute4Me.git && cd Compute4Me
+make dev          # uv sync + install the pre-commit hooks
+make check        # lint + types + tests: what CI runs, minus the Docker jobs
+make image        # build the image (needed for every task's Docker verification)
 ```
 
-## The unit of work: T-tasks
+> **Until T28 merges:** `pre-commit` isn't a dev dependency, so `make dev` fails at the hook step. Run `uv sync` and then `uvx pre-commit install`. There's also no `.python-version` yet, so pin the interpreter by hand: `uv venv --python 3.13 && uv sync` ([T28](./docs/tasks/T28-dev-tooling.md), [ADR-0017](./docs/adr/0017-python-toolchain.md)).
 
-All v0.1 work is decomposed into **T-tasks** (`T01`–`T27`) in [docs/prd.md §11](./docs/prd.md#8-implementation-tasks-t01t27). Each task is self-contained: prerequisites, deliverables, file paths, acceptance criteria.
+## The unit of work: a task
 
-Work proceeds **one task or one tightly-related cluster** per feature branch, dependency-ordered through phases P0 → P5. Don't skip ahead — the tracer-bullet milestones at the end of P1 (Worker joins) and P2 (tiny Search Job runs E2E on fake Workers) are load-bearing.
+All v0.1 work is split into tasks **T01–T33**. [docs/plan.md](./docs/plan.md) lists them with phases, sizes and dependencies; each task in the current and next phase has a **full card** in [docs/tasks/](./docs/tasks/README.md); later ones are stubs in the plan until their detailing session. Task IDs are stable: T28+ were added on 2026-11-10, and the plan's order, not the number, says what comes next.
 
-## Branch & commit workflow
+For each task:
 
-### Branches
+1. **Check the dependencies are merged** (plan's index and graph).
+2. **Read the whole card**, plus every ADR and architecture section it links.
+3. **Settle every "Decide first" item** with the user before writing code. Record each answer in the card's History line, and in an ADR when it meets the ADR criteria ([adr/README.md](./docs/adr/README.md#when-to-write-one)).
+4. **Branch, open a draft PR early, push at the end of every sitting.**
+5. **Run the card's "Verify in Docker" step** and paste the output into the PR ([ADR-0020](./docs/adr/0020-docker-is-the-verification-surface.md)).
+6. **Meet the Definition of Done** in [plan.md](./docs/plan.md#definition-of-done-every-task).
 
-- **Naming:** `feat/T<NN>-<slug>` for single tasks; `feat/T<NN>-T<MM>-<slug>` for clusters.
-  - Examples: `feat/T01-repo-skeleton`, `feat/T05-T08-control-plane-bootstrap`, `feat/T18-T19-failure-and-quarantine`.
-  - Slugs are kebab-case, ≤4 words, match the PRD task title.
-- **One branch per task or task-cluster.** Don't accumulate unrelated work on a branch.
-- **Branches deleted on merge** (GitHub auto-delete enabled).
+## Branches and commits
 
-### Commits within a branch
+| Branch | For |
+|---|---|
+| `feat/T<NN>-<slug>` | A feature task (one task per branch; `feat/T<NN>-T<MM>-<slug>` for a tight cluster) |
+| `chore/T<NN>-<slug>` | A tooling/CI task (e.g. `chore/T28-dev-tooling`) |
+| `fix/<slug>` | A bug fix outside a task |
+| `docs/<slug>` | Docs only |
+| `chore/<slug>` | Tooling, dependencies, CI outside a task |
 
-- **Conventional Commits, lightweight:** `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:` prefixes.
-- No enforcement hook — self-discipline only. Commits get squashed at merge, so WIP and "fix typo" commits within the branch are fine.
+Slugs are kebab-case, ≤ 4 words. Never commit to `main`.
 
-### Pull Request
+**Commits** are Conventional Commits (`feat:`, `fix:`, `test:`, `docs:`, `refactor:`, `chore:`, `ci:`, `build:`, `perf:`). Prefer **at least two commits per task, split along natural seams**: `feat:` (implementation), `test:` (tests), `docs:` (docs, changelog, index). GitHub pre-fills the squash body from the commit subjects, so terse, separate commits give a clean, scannable bullet list. Use one commit only when the change is genuinely atomic, and then keep it to a one-line subject.
 
-PR title format: **`feat(T<NN>): <Title from PRD §11>`**. For non-task work: `fix:` / `chore:` / `docs:` (no T-ID).
-Examples:
-- `feat(T01): Repo skeleton + packaging + image`
-- `feat(T05-T08): Control-plane bootstrap (tracer bullet 1)`
-- `docs: clarify ADR-0011 fingerprint rotation`
+## Pull requests
 
-**Merge strategy:** squash merge. The PR title becomes the commit subject on `main`; the PR body becomes the commit body. `main`'s history reads as a clean sequence of T-tasks.
+**Title** (becomes the commit on `main`): `feat(T<NN>): <card title>`, e.g. `feat(T10): Bandwidth/RTT probe + periodic profile refresh`. For non-task work: `fix: …`, `docs: …`, `chore: …`. CI checks the format from T28 (`pr-title`).
 
-## The PR lifecycle
+**Merge:** squash only. The PR title is the commit subject and the PR's commit list is the body.
 
-**Draft → Ready → Merge**, with explicit AI/human responsibilities:
+### Lifecycle: Draft → Ready → Merge
 
-1. **Open as Draft** as soon as the branch builds. Fill in the PR template (see below). Pre-populate the **Manual** section with specific, runnable commands and expected outcomes.
-2. **CI runs on the Draft.** When all CI jobs are green and acceptance criteria checkboxes are ticked from the automated side, **convert the PR to Ready** — this is the "implementation done; over to you for manual verification" signal.
-3. **Manual phase** — see below.
-4. **Failures:** comment on the PR. Fixes go on the **same branch** (squashed away on merge). CI re-runs; back to step 3.
-5. **Squash-merge** when Manual checkboxes are all green. Branch auto-deletes.
+1. **Draft** as soon as the branch builds. Fill in the [PR template](./.github/PULL_REQUEST_TEMPLATE.md): the card's Done-when list, the tests, and a **Manual** section with runnable commands and expected outcomes.
+2. **Ready** when CI is green, the automated Done-when items are ticked, and the card's **Verify in Docker** output is in the PR. That means "implementation done; over to manual verification".
+3. **Manual phase:**
+   - **Verification** (scripted): run each command in the Manual section and tick it.
+   - **Exploratory** (15–30 min): actually use the feature: CLI ergonomics, error messages, defaults.
+   - **Triage every finding** as one of:
+     - **Blocker:** fix on the same branch before merging.
+     - **Polish:** file a `polish` issue; don't block.
+     - **Spec issue:** update the PRD, card, context or ADR in the same PR.
+4. **Squash-merge** when the Manual checkboxes are done. Delete the branch.
 
-### Manual phase — two flavours
+### Repository settings
 
-The PR template's Manual section has two subsections:
+These are the settings the docs assume. They are applied by the repo owner as part of T28; until then, **nothing is enforced**, and "don't merge with red CI" is a convention only.
 
-**Verification** (scripted): specific commands with expected outcomes. Pre-populated by the implementer. Tick after running.
-```
-- [ ] Ran `compute4me serve --room test` → Master boots, prints port + cert fp
-- [ ] Ran `docker run compute4me worker --token <T>` → Worker appears in `status`
-```
-
-**Exploratory** (free play, ~15–30 min): you actually *use* the feature — CLI ergonomics, error messages, defaults, integration feel. Catches what scripted tests structurally can't.
-
-**Triage rule** during exploratory: every finding is one of three kinds.
-- **Blocker** → fix on the same branch before merge.
-- **Polish** → file as a [polish issue](./.github/ISSUE_TEMPLATE/polish.md), don't block.
-- **Spec issue** → update PRD / CONTEXT / ADR in the same PR.
-
-This stops exploratory testing from gold-plating every PR while still catching real problems.
+| Setting | Value |
+|---|---|
+| Visibility | **Public** (Apache-2.0) |
+| `main` protection | Required checks: `ci-test`, `ci-lint`, `ci-types`, `ci-imports`, `ci-image`, `ci-docs`, `ci-secrets`, `pr-title` (and `ci-compose` from T31); admin bypass allowed (solo project) |
+| Merge methods | Squash only |
+| Head branches | Auto-deleted after merge |
 
 ## Tests
 
-### Layout
+Layout mirrors `src/compute4me/`:
 
-Tests mirror the code under `src/compute4me/`:
-
-```
+```text
 tests/
-├── INDEX.md                              # T-task → test file map; updated per PR
-├── unit/                                  # pure, fast, no I/O
-│   ├── test_cost_model.py
-│   ├── test_scheduler.py
-│   └── ...
-├── fakes/                                 # FakeWorker, fake hw probes, fake container runner
-└── integration/
-    └── test_e2e_search.py                # Master + 2 fake Workers + tiny Search Job
+├── INDEX.md          # task → test file → markers; updated in every PR that adds tests
+├── conftest.py       # marker enforcement, auto-skips, shared fixtures (T28)
+├── fakes/            # FakeWorker, fake probes, fake runner, fake docker wrapper
+├── unit/             # pure, fast, no network, no Docker
+└── integration/      # real Master/Worker objects over localhost, with fakes; E2E with fakes
 ```
 
-### Pytest markers
-
-Every test declares (a) its kind, (b) its T-task attribution, (c) any hardware dependency.
+**Markers.** Every test declares a task, exactly one kind, and any hardware it needs:
 
 ```python
 @pytest.mark.unit
 @pytest.mark.task("T16")
-def test_scheduler_assigns_biggest_to_fastest(): ...
-
-@pytest.mark.integration
-@pytest.mark.task("T17")
-def test_e2e_search_job_completes(): ...
+def test_scheduler_assigns_biggest_task_to_fastest_worker() -> None: ...
 
 @pytest.mark.requires_docker
-@pytest.mark.task("T17")
-def test_runner_with_real_container(): ...
+@pytest.mark.task("T30")
+def test_bench_image_reports_positive_throughput() -> None: ...
 ```
 
-Marker set:
-- `@pytest.mark.unit` — pure, fast, no I/O (most tests).
-- `@pytest.mark.integration` — multi-module with fakes; no real network / GPU / Docker.
-- `@pytest.mark.requires_docker` — needs real Docker (skipped in CI).
-- `@pytest.mark.requires_gpu` — needs CUDA (skipped in CI).
-- `@pytest.mark.task("T<NN>")` — attributes the test to one (or more) T-tasks.
-- `@pytest.mark.slow` — takes >5s (allows fast iteration via `-m "not slow"`).
-
-### CI vs local invocation
-
-- **CI default:** `pytest -m "not requires_docker and not requires_gpu"` — fully deterministic, runs on GitHub-hosted runners (no hardware).
-- **Local full run** (with GPU + Docker available): `pytest` (no filter).
-- **Run a specific T-task's tests:** `pytest -m 'task("T16")'`.
-
-### `tests/INDEX.md`
-
-A maintained map: T-task → test file(s) → markers. Updated per PR — every new test gets an entry. Provides a quick "which tests cover T16?" lookup without grep.
-
-## CI quality gates (GitHub Actions)
-
-Three required jobs on every push to a PR; branch protection requires all three before merge.
-
-| Job | Command | Purpose |
+| Marker | Meaning | In CI |
 |---|---|---|
-| `ci-test` | `pytest -m "not requires_docker and not requires_gpu"` | Behavioral correctness |
-| `ci-lint` | `ruff check . && ruff format --check .` | Style + import order |
-| `ci-types` | `mypy --strict src/` | Type contracts |
-| (coverage) | `pytest --cov` | Reported only, **not gated** |
+| `unit` | Pure, fast, no I/O | ✅ |
+| `integration` | Several modules, localhost network, fakes; no real Docker or GPU | ✅ |
+| `requires_docker` | Needs a Docker daemon | skipped (auto-skips without Docker, T28) |
+| `requires_gpu` | Needs CUDA | skipped (auto-skips without a GPU, T28) |
+| `slow` | Takes > 5 s | ✅ |
+| `task("T<NN>")` | Attribution; `pytest -m 'task("T16")'` runs one task's tests | — |
 
-**Branch protection on `main`:**
-- Require `ci-test`, `ci-lint`, `ci-types` to pass.
-- Require branch up-to-date with `main` before merge.
-- No required reviewers (solo).
-- Auto-delete head branch on merge.
+**Rules:** test external behaviour, not internals; put shared helpers in `conftest.py` / `tests/fakes/`, never copy them; every network wait has an explicit timeout; no `sleep`-based synchronisation. Where each check runs: [test-map.md](./docs/architecture/test-map.md).
 
-**Local pre-commit hooks** (configured in `.pre-commit-config.yaml`) run `ruff` + `mypy` + a relative-link checker on `*.md` before every commit. Saves a CI cycle when you typo something.
+## CI
 
-## Documentation discipline
+| Job | Runs | Since |
+|---|---|---|
+| `ci-test` | `pytest -m "not requires_docker and not requires_gpu"` with coverage (reported, not gated) | T01 |
+| `ci-lint` | `ruff check` + `ruff format --check` | T01 |
+| `ci-types` | `mypy --strict src/` | T01 |
+| `ci-imports` | import-linter contracts | T28 |
+| `ci-image` | build the image, run `--help` and `version` | T28 |
+| `ci-docs` | mdformat + Markdown link and anchor check | T28 |
+| `ci-secrets` | gitleaks | T28 |
+| `pr-title` | Conventional Commit title | T28 |
+| `ci-compose` | compose join smoke (a Master container and a Worker container) | T31 |
 
-### Docs travel with code
+`make check` runs the jobs that need no Docker; `make image-smoke` and `make smoke` run the Docker ones.
 
-Doc changes that arise from a feature **live in the same PR as the code**. This includes:
+## Documentation travels with code
 
-| Doc | When it changes in a feature branch |
+Doc changes caused by a feature go **in the same PR as the code**:
+
+| Doc | Changes when |
 |---|---|
-| [docs/context.md](./docs/context.md) | New term introduced by this code; rename of an existing term. |
-| [docs/adr/](./docs/adr/) | New architectural decision being made in this branch (write the ADR *before* / *alongside* the code, not after). |
-| [docs/roadmap.md](./docs/roadmap.md) | Scope shift discovered while implementing (v0.2 item turned out trivial; v0.1 item turned out to need deferring). |
-| [docs/prd.md](./docs/prd.md) | Spec correction discovered while implementing (T-task acceptance criterion was wrong). |
-| [README.md](./README.md) | New CLI command, install step, etc. |
-| [tests/INDEX.md](./tests/INDEX.md) | New tests added — always. |
+| The task card | Status row; History line for every Decide-first answer |
+| [docs/context.md](./docs/context.md) | A term is added or renamed (code and doc in the same PR) |
+| [docs/architecture/](./docs/architecture/README.md) | A module, schema, message, CLI flag or deployment step is added or changed |
+| [docs/adr/](./docs/adr/README.md) | A decision is made (new ADR) or a detail an ADR left open is settled (History line) |
+| [docs/plan.md](./docs/plan.md) | Order, dependencies or scope of a task changes |
+| [docs/prd.md](./docs/prd.md) | A requirement or acceptance criterion was wrong |
+| [docs/roadmap.md](./docs/roadmap.md) | Something is deferred to, or pulled in from, a later version |
+| [docs/background/challenges-faced.md](./docs/background/challenges-faced.md) | A real problem changed a design or would have produced wrong behaviour |
+| [CHANGELOG.md](./CHANGELOG.md) | Every task PR (under `[Unreleased]`) |
+| [tests/INDEX.md](./tests/INDEX.md) | Tests are added |
+| [README.md](./README.md) | A user-visible command or install step changes |
 
-Exceptions go in their own small `docs:` PR: typos, restructuring, bulk reformat.
-
-### The PR template's "Docs touched" and "ADRs touched" sections
-
-Force you to declare what you changed. If you wrote "none" but you touched a term in CONTEXT.md, the discrepancy gets caught on self-review.
+Typos, restructuring and bulk reformatting go in their own `docs:` PR.
 
 ## Issues
 
-Two templates under `.github/ISSUE_TEMPLATE/`:
+| Template | For |
+|---|---|
+| `Task` | One per task; links the card. The card is the spec; the issue tracks who, when and blockers |
+| `Bug` | Broken behaviour: what happened, expected, steps, environment, logs (redact tokens) |
+| `Polish` | Exploratory-testing findings that don't block a merge: severity, originating PR, area |
 
-- **`polish`** — exploratory-testing findings. Severity (`nit` / `minor` / `annoying`) + originating PR + area + description. Goes into a polish backlog; not a merge blocker.
-- **`bug`** — actually broken behavior. What happened / expected / repro / environment.
+Blank issues are disabled. **Milestones** are the phases (P1–P5). **Labels:** `phase:P1`…`phase:P5`, `polish`, `spec-issue`, `bug`, `blocked`, `needs-docker`, `needs-gpu`, `needs-fleet`. One standing issue, **"Needs the real fleet"**, collects every check that only real hardware can do (NAT'd contributor, lab GPUs, VPS Master).
 
-`config.yml` disables blank issues — every issue picks a template.
+## Versioning and releases
 
-## Versioning & releases
+**SemVer, no pre-releases in 0.x.** Tag `v0.1.0` when v0.1 ships; `0.x` means no API stability.
 
-**SemVer, Pattern A** (no pre-releases for v0.x development):
+**GitHub Releases:** tag everything; author a Release page only when there's an audience (paper submission, going public). A Release can be added to any tag later.
 
-- Tag `v0.1.0` when v0.1 ships (all 10 acceptance criteria from [docs/prd.md §12](./docs/prd.md) check).
-- Tag `v0.2.0` when v0.2 ships. Etc.
-- No alpha / beta / rc — intermediate states are referenced by commit SHA or PR number.
-
-**0.x means "no API stability."** Anything can change in any minor-version bump until v1.0.
-
-**GitHub Releases — Path Y:** tag everything; author a Release page **only** when there's an audience (paper submission, going public). For early development, just `git tag` + `git push --tags` is sufficient. The Release wrapper can be added retroactively to any tag.
-
-### When cutting a release (checklist)
+### Release checklist
 
 Before `git tag vX.Y.Z`:
 
-1. ✅ All acceptance criteria in [docs/prd.md §12](./docs/prd.md) check.
-2. ✅ All T-tasks for this version are merged; no open PRs targeting `main` for this milestone.
-3. ✅ [CHANGELOG.md](./CHANGELOG.md) has an entry for this version with what changed.
-4. ✅ `pyproject.toml` version matches the tag.
-5. ✅ All ADRs are `accepted` or `superseded` (no lingering `proposed`).
-6. ✅ Archive [docs/prd.md](./docs/prd.md) → `docs/archive/prd-vX.Y.md`; rewrite [docs/prd.md](./docs/prd.md) for the next milestone.
+1. Every acceptance criterion in [docs/prd.md §13](./docs/prd.md#13-acceptance-criteria-v01-done) holds.
+2. Every task for the version is merged; no open PRs target `main` for it.
+3. [CHANGELOG.md](./CHANGELOG.md) has the version's entry; `pyproject.toml` matches the tag.
+4. No ADR is still `proposed`.
+5. Archive `docs/prd.md` → `docs/archive/prd-vX.Y.md` (and `docs/plan.md` → `docs/archive/plan-vX.Y.md`); write the next version's PRD and plan.
 
-A `scripts/release_check.py` will automate steps 1–5 once v0.1.0 nears ship. Until then, run the checklist by hand.
+## Scope changes
 
-## When making scope changes (checklist)
-
-If a PR discovers something that affects future scope:
-
-1. **A v0.2 item should land in v0.1?** → Add a T-task to [docs/prd.md §11](./docs/prd.md#8-implementation-tasks-t01t27), remove the entry from [docs/roadmap.md](./docs/roadmap.md), in the same PR.
-2. **A v0.1 item should defer?** → Remove from [docs/prd.md §11](./docs/prd.md#8-implementation-tasks-t01t27), add to [docs/roadmap.md](./docs/roadmap.md), update the acceptance criteria in §12 accordingly. Justify in the PR description.
-3. **An ADR needs revisiting?** → Don't edit the old ADR. Write a new one with `status: accepted` and add to the old one's frontmatter `status: superseded by ADR-NNNN`.
+1. **A later-version item should land in v0.1:** add a task to [docs/plan.md](./docs/plan.md) (next free ID), remove it from [docs/roadmap.md](./docs/roadmap.md), in one PR.
+2. **A v0.1 item should be deferred:** remove it from the plan, add it to the roadmap, update the PRD's acceptance criteria if affected, and justify it in the PR.
+3. **A decision needs reversing:** write a new ADR that supersedes the old one ([adr/README.md](./docs/adr/README.md#changing-an-adr)).
 
 ## Things to avoid
 
-- **Don't relitigate ADRs** without a new one that supersedes. The ADRs exist precisely so the same debates don't recur.
-- **Don't add features not in the current PRD §11.** Scope creep is the dominant failure mode for solo research projects. If you spot something worth doing, file it as a polish issue or propose a roadmap update.
-- **Don't merge a PR with red CI** — even "I'm sure this test is flaky." Investigate the flake or quarantine the test explicitly.
-- **Don't `--no-verify` or `--no-gpg-sign`** to skip hooks. Fix the hook or the issue.
-- **Don't force-push to `main`.** Force-push to your own feature branch is fine.
+- **Relitigating an ADR** without writing one that supersedes it.
+- **Features not in the plan.** Scope creep is the main failure mode of solo research projects; file a `polish` issue or propose a roadmap entry instead.
+- **Merging with red CI**, even "it's flaky": fix the flake or quarantine the test explicitly.
+- **`--no-verify`** to skip hooks: fix the hook or the code.
+- **"No Docker rebuild needed"** without the card saying so ([ADR-0020](./docs/adr/0020-docker-is-the-verification-surface.md)).
+- **Force-pushing `main`.** Force-pushing your own branch is fine.
 
-## Communication norms with coding agents
+## Working with coding agents
 
-When handing a task to a coding agent (Claude Code, etc.):
-
-- Point at the specific T-task section in [docs/prd.md §11](./docs/prd.md#8-implementation-tasks-t01t27), the architecture docs it depends on, and the relevant ADRs.
-- Confirm the agent has read [docs/context.md](./docs/context.md) — the terminology is canonical and not negotiable.
-- Ask for a summary back before the agent writes code (Q: "what's the deliverable, what acceptance criteria do you understand, what files will you touch?"). Misalignment is much cheaper to catch before code is written.
-- Expect the agent to follow this workflow: branch named `feat/T<NN>-<slug>`, conventional commits, Draft PR with the template filled in, flip to Ready when green.
+- Start the session with [docs/tasks/session-prompt.md](./docs/tasks/session-prompt.md); it points the agent at [CLAUDE.md](./CLAUDE.md) and the task card, and sets the ask-before rules.
+- Ask for a summary back before any code: the deliverable, the Done-when list, the files to touch, and the **Decide first** questions with recommendations. Settle those one at a time.
+- Expect the workflow above: branch name, ≥ 2 commits split by seam, draft PR with the template filled in, Docker verification pasted, Ready only when green.

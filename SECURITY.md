@@ -37,7 +37,7 @@ Treat the following as in-scope:
 
 Out of scope (handled by upstream projects):
 
-- Vulnerabilities in Python itself, in Docker / Docker Engine, in PyTorch / Optuna / Pydantic / FastAPI, etc. — please report those to the respective projects.
+- Vulnerabilities in Python itself, in Docker / Docker Engine, in PyTorch / Optuna / Pydantic / Starlette / websockets, etc. — please report those to the respective projects.
 - User model containers — these are user-supplied code; their security is the user's responsibility. Compute4Me's contract treats them as untrusted in terms of side effects (we don't audit them) but as trusted in terms of returned data (no Byzantine-robust validation in v0.1 — see [ADR-0002](./docs/adr/0002-closed-membership-rooms.md)).
 
 ## Threat model (high level)
@@ -50,11 +50,13 @@ v0.1 is **closed-membership** — Workers join only with an Invite Token issued 
 - **Buggy Worker returning garbage:** mitigated by result validation (finite metric / output schema). **Not** mitigated for adversarial behavior — Byzantine-robust aggregation is out of scope for v0.1.
 - **Leaked admin token:** an admin token authorizes Job submission ([ADR-0014](./docs/adr/0014-admin-tokens-for-submission.md)) — submission means running an arbitrary user image on Workers in the Room. A leaked admin token can therefore execute arbitrary code on every Worker host. Treat admin tokens with elevated care: short TTL, revoke promptly if a researcher's machine is compromised. Worker-only tokens (the default issuance) cannot submit.
 
+- **Secrets in logs and reports:** the repository and its issues are public. Logs redact tokens to their `jti` and never include signing keys or Job `env` values ([ADR-0018](./docs/adr/0018-logging-and-events.md)); still, review logs before pasting them into an issue. CI scans every push for committed secrets (gitleaks, from T28).
+
 Out-of-band trust (you only invite people you'd let SSH into your machines) is load-bearing. Open / public Rooms with Byzantine defenses are a separate research thread, not on the v0.x roadmap.
 
 ## Worker host privilege model
 
-The Worker container needs `-v /var/run/docker.sock:/var/run/docker.sock` to run user model images per the [Container Contract](./docs/architecture/wire-protocol.md). Mounting the Docker socket gives the Worker container **root-equivalent access to the host**.
+The Worker container needs `-v /var/run/docker.sock:/var/run/docker.sock` to run user model images per the [Container Contract](./docs/architecture/wire-protocol.md), and the throughput benchmark image ([ADR-0016](./docs/adr/0016-benchmark-runs-as-a-container.md)). Mounting the Docker socket gives the Worker container **root-equivalent access to the host**.
 
 This is standard practice for runner-style workloads (every CI runner — GitHub Actions, GitLab, Jenkins agents — does the same). The trust model assumes:
 
