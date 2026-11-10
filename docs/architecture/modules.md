@@ -2,6 +2,196 @@
 
 Interface signatures for every module in the system. Each module is designed to be **pure or easily faked** so it can be unit-tested in isolation. Signatures shown in indicative Python — implementations can change without invalidating these contracts.
 
+## Package map
+
+*As built (T09).* Solid arrows are imports that exist today; dotted ones arrive with the named task. Modules not shown (`client`, `sdk`, `errors`, and the Master and Worker stubs) import nothing yet.
+
+```mermaid
+flowchart TB
+    CLI["compute4me.cli<br/>typer entry point"]
+    subgraph MASTER["compute4me.master"]
+        SRV["server<br/>TLS + ControlServer"]
+        TOK["tokens<br/>TokenService"]
+        ST["state<br/>StateStore"]
+    end
+    subgraph WORKER["compute4me.worker"]
+        DMN["daemon<br/>WorkerDaemon"]
+        PRF["profiler"]
+    end
+    PROTO["compute4me.proto<br/>message models"]
+    TYPES["compute4me.types<br/>Pydantic models"]
+    CLI -.->|"T31"| SRV
+    CLI -.->|"T31"| DMN
+    CLI -.->|"T31"| PRF
+    SRV --> TOK
+    SRV --> ST
+    SRV --> PROTO
+    SRV --> TYPES
+    TOK --> TYPES
+    TOK -.->|"type-only"| ST
+    ST --> TYPES
+    DMN --> PROTO
+    PRF --> TYPES
+    PROTO --> TYPES
+```
+
+Import rules ([ADR-0017](../adr/0017-python-toolchain.md); import-linter enforces them from [T28](../tasks/T28-dev-tooling.md)):
+
+| Package | May import from `compute4me` | Never imports |
+|---|---|---|
+| `types`, `errors` | nothing | everything |
+| `proto` | `types` | everything else |
+| `master` | `types`, `proto`, `errors`, its own modules | `worker`, `client`, `sdk` |
+| `worker` | `types`, `proto`, `errors`, its own modules | `master`, `client`, `sdk` |
+| `client` | `types`, `proto`, `errors` | `master`, `worker` |
+| `sdk` | nothing (it runs inside user containers) | everything |
+| `cli` | anything | (it is the top) |
+
+ML frameworks (torch etc.) are never imported by any of them ([ADR-0016](../adr/0016-benchmark-runs-as-a-container.md)).
+
+## Classes as built
+
+*As built (T09).* The control plane that exists today. `InvalidToken`, `CertPinError` and `JoinRejected` are the exceptions on these paths.
+
+```mermaid
+classDiagram
+    direction LR
+    class ControlServer {
+        +connected_count: int
+        +port: int
+        +serve(host, port) async
+        +close() async
+        +push(conn_id, message)
+        +is_connected(jti) bool
+        -_handle(ws) async
+        -_dispatch(conn, raw)
+        -_on_join(conn, message)
+    }
+    class Conn {
+        ws: ServerConnection
+        send_queue: asyncio.Queue
+        jti: str | None
+        worker_id: str | None
+    }
+    class TokenService {
+        +issue(room, max_workers, ttl, admin) str
+        +verify(token) TokenClaims
+        +revoke(jti)
+        +admit(claims) bool
+        +release(jti)
+    }
+    class StateStore {
+        +save_room(id, name, created_at)
+        +save_token(jti, room_id, max_workers, ...)
+        +set_token_revoked(jti)
+        +load_revoked_jtis() set
+        +save_worker(worker)
+        +save_job(job)
+        +load_open_jobs() list~Job~
+        +save_task(task, status, ...)
+        +load_pending_tasks(job_id) list~Task~
+        +save_result(result, finished_at)
+    }
+    class MasterCert {
+        <<dataclass>>
+        cert_path: Path
+        key_path: Path
+        fingerprint: str
+    }
+    class WorkerDaemon {
+        +worker_id: str | None
+        +connect_once(on_connected) async
+        +run(max_sessions) async
+        -_heartbeat_loop(ws) async
+    }
+    class profiler {
+        <<module>>
+        +profile(data_dir, cache_dir, ...) CapabilityProfile
+        +detect_gpu() GpuInfo
+        +host_stats(data_dir) tuple
+        +scan_cached_datasets(cache_dir) list
+        +ensure_host_id(data_dir) str
+    }
+    ControlServer --> TokenService
+    ControlServer --> StateStore
+    ControlServer --> MasterCert
+    ControlServer *-- Conn : one per socket
+    TokenService --> StateStore
+    WorkerDaemon ..> ControlServer : WSS join, heartbeat
+    WorkerDaemon ..> profiler : profile passed in (T31 wires it)
+```
+
+`Conn` is `_Conn` in the code. `profile()` also calls `run_micro_benchmark`, which T30 replaces with the bench container.
+
+## Interfaces planned for P2
+
+*Planned (T11–T17).* The signatures are each card's **recommendation**; they change if the card's Decide-first answer differs, and this diagram changes with them.
+
+```mermaid
+classDiagram
+    direction TB
+    class Sampler {
+        <<Protocol>>
+        +ask() Proposal
+        +tell(trial_id, value)
+        +exhausted() bool
+    }
+    class OptunaSampler {
+        +restore(completed)
+    }
+    class RawListSampler
+    class JobPlan {
+        <<abstract>>
+        +next_tasks(k) list~Task~
+        +on_result(task_id, value)
+    }
+    class SearchPlan
+    class MapPlan
+    class Scheduler {
+        +enqueue(tasks)
+        +next_task_for(worker, fleet) Task | None
+        +on_task_done(task_id, result)
+        +on_task_failed(task_id, error)
+    }
+    class cost_model {
+        <<module>>
+        +rate(worker, room_peers) value, source
+        +estimate(task, worker, peers, input_bytes_uncached) float
+        +feasible(task, worker) bool
+    }
+    class ArtifactStore {
+        +put_stream(chunks) str
+        +put_url(url) str
+        +path(hash) Path
+        +exists(hash) bool
+        +resolve(name_or_hash) str
+        +set_alias(hash, name, version)
+        +serve_shard(manifest_hash, shard) list
+    }
+    class EventLog {
+        +emit(type, ids, fields) Event
+    }
+    Sampler <|.. OptunaSampler
+    Sampler <|.. RawListSampler
+    JobPlan <|-- SearchPlan
+    JobPlan <|-- MapPlan
+    SearchPlan --> Sampler : ask, tell
+    Scheduler --> JobPlan : next_tasks(k)
+    Scheduler ..> cost_model : feasible, estimate
+    Scheduler ..> EventLog : task_assigned
+```
+
+| Class | Card |
+|---|---|
+| `Sampler`, `OptunaSampler`, `RawListSampler` | [T13](../tasks/T13-samplers.md) |
+| `JobPlan`, `SearchPlan`, `MapPlan` | [T14](../tasks/T14-decomposer.md) |
+| `cost_model` | [T15](../tasks/T15-cost-model.md) |
+| `Scheduler` | [T16](../tasks/T16-scheduler.md) |
+| `ArtifactStore` | [T11](../tasks/T11-artifact-store.md), [T12](../tasks/T12-shards-and-cache.md) |
+| `EventLog` | [T29](../tasks/T29-logging-events.md) |
+
+Worker side: `worker/docker.py` (T30: `run`, `pull`, `image_present` over the `docker` CLI), `cache.ensure_cached(ref) -> Path` (T12) and `runner.run(task, …) -> TaskResult` (T17). Their interaction is the [Task execution](#task-execution-on-a-worker) sequence below.
+
 ## Master-side modules
 
 ### Token service — `master/tokens.py`
@@ -60,6 +250,22 @@ def enqueue(tasks: Iterable[Task]) -> None
 ```
 
 Decision logic is **pure given the pending queue + Capability Profiles** → fully testable without a network. v0.1 runs one Job at a time per Room (FIFO); multi-Job concurrency is v0.2. See [ADR-0008](../adr/0008-smart-pull-scheduling.md).
+
+*Planned (T15, T16), with the cards' recommended rules:*
+
+```mermaid
+flowchart TB
+    A["A Worker is free<br/>join_ack, task_result or idle heartbeat"] --> B{"Pending Tasks<br/>for the current Job?"}
+    B -->|"no"| P{"JobPlan.next_tasks(k)<br/>returns any?"}
+    P -->|"no"| IDLE["Return None<br/>the Worker stays idle"]
+    P -->|"yes"| C
+    B -->|"yes"| C["Feasibility filter<br/>gpu_required vs gpu.model<br/>min_vram_mb vs vram_free_mb"]
+    C --> D{"Any feasible?"}
+    D -->|"no"| IDLE
+    D -->|"yes"| E["Locality: Tasks whose inputs are<br/>all cached on this Worker come first"]
+    E --> F["Rank match inside that group<br/>Worker speed quantile q → the Task<br/>at quantile q of est_work_units"]
+    F --> G["task_assign, Task → assigned<br/>event task_assigned"]
+```
 
 ### Job decomposer — `master/decomposer.py`
 
@@ -121,7 +327,7 @@ def server_ssl_context(cert) -> ssl.SSLContext   # TLS server context presenting
 
 # WS control server (T07)
 class ControlServer:
-    def __init__(self, tokens: TokenService, cert: MasterCert)
+    def __init__(self, tokens: TokenService, cert: MasterCert, store: StateStore)
     async def serve(host, port)          # listen for WSS connections (one per Worker)
     async def close()                    # stop the listener, drop connections
     def push(conn_id, message)           # enqueue a MasterMessage to a Worker (per-Worker send queue)
@@ -174,6 +380,20 @@ def validate_result(task: Task, result: TaskResult) -> bool
 
 No adversarial defense — see [ADR-0002](../adr/0002-closed-membership-rooms.md). Byzantine-robust validation is a deferred research thread.
 
+*Planned (T18, T19):*
+
+```mermaid
+flowchart TB
+    F1["task_result failed,<br/>or the result fails validation"] --> A{"Fewer than 3<br/>attempts so far?"}
+    F2["No heartbeat for 30 s<br/>Worker → down"] --> A
+    A -->|"no"| PF["Task → failed<br/>sibling Tasks continue<br/>event task_failed"]
+    A -->|"yes"| O{"OOM?"}
+    O -->|"yes"| OP["Re-queue for a Worker with<br/>at least 2× the VRAM, if one exists"]
+    O -->|"no"| RQ["Re-queue, attempts + 1<br/>event task_retry"]
+    F1 --> Q{"This Worker failed 3 Tasks<br/>in the last 10 min?"}
+    Q -->|"yes"| QW["Worker → quarantined for 5 min<br/>event worker_quarantined"]
+```
+
 ## Worker-side modules
 
 ### Capability profiler — `worker/profiler.py`
@@ -196,6 +416,8 @@ Testable against fake hardware probes (inject `nvidia-smi` / `psutil` shims via 
 
 `run_micro_benchmark` is the **only** part that needs PyTorch, and it imports torch lazily — the Worker runs the *user's* container for real training (ADR-0006), so torch is not a Worker runtime dependency. It is the optional `bench` extra (kept out of the default install and both images, which stay lean); a Worker host installs the CUDA-matched build once via [`scripts/setup-worker.sh`](../../scripts/setup-worker.sh). Absent torch, the benchmark raises `BenchmarkUnavailable` with install guidance. The benchmark is GPU/torch-touching → exercised manually, skipped in CI.
 
+> **Known broken, being replaced (2026-11-10).** In the shipped image there is no torch, and `profile()` calls the benchmark directly, so `profile()` raises and the Worker can't join. Host-installed torch is invisible to the Worker container. [ADR-0016](../adr/0016-benchmark-runs-as-a-container.md) replaces this with a benchmark container run through the Docker socket, and makes `throughput_ref` optional; T30 implements it and rewrites this section.
+
 ### Container runner — `worker/runner.py`
 
 ```python
@@ -209,7 +431,7 @@ def run(task: Task, input_dir: Path, output_dir: Path) -> TaskResult
     # Tails output_dir/progress.jsonl during execution for live metrics.
 ```
 
-The user's image stays **vanilla** — no `import compute4me` required. See [ADR-0006](../adr/0006-black-box-container-contract.md) and [wire-protocol.md §1](./wire-protocol.md#1-container-contract-master--user-image).
+The user's image stays **vanilla** — no `import compute4me` required. See [ADR-0006](../adr/0006-black-box-container-contract.md) and [wire-protocol.md §1](./wire-protocol.md#1-container-contract-masterworker--user-image).
 
 ### Artifact cache — `worker/cache.py`
 
@@ -232,6 +454,54 @@ The top-level loop, not a module with discrete signatures. Responsibilities:
 - Receive `task_cancel` → SIGTERM (30s grace) → SIGKILL the user container.
 - Reconnect with backoff on transient drops.
 
+*As built (T08):* the connection state machine of `WorkerDaemon.run`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Connecting
+    Connecting --> Pinning: TLS handshake done
+    Connecting --> Backoff: OSError or ConnectionClosed
+    Pinning --> Joining: fingerprint matches
+    Pinning --> Backoff: CertPinError
+    Joining --> Connected: join_ack, worker_id recorded
+    Joining --> [*]: join_reject, JoinRejected raised
+    Connected --> Connecting: Master closed the socket, backoff reset to 1 s
+    Backoff --> Connecting: sleep 1 s, doubling to 30 s
+```
+
+A `CertPinError` is currently retried like a network error, although a pinned fingerprint never starts matching; [T31](../tasks/T31-runnable-cli.md) settles whether it becomes terminal.
+
+### Task execution on a Worker
+
+*Planned (T12, T17), with the cards' recommendations:*
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant M as Master
+    participant D as Worker daemon
+    participant C as Artifact cache
+    participant R as Container runner
+    participant H as Host Docker daemon
+    participant U as User container
+    M->>D: task_assign {task_id, code_ref, args, input_refs, requires}
+    D->>C: ensure_cached(ref) for each input
+    C->>M: GET the shard slice, then each missing blob
+    C-->>D: shard directory, hard links into the blob cache
+    D->>R: run(task, inputs, outputs, gpu_uuid, env, on_progress, on_log)
+    R->>H: docker run --gpus device=UUID, host-path mounts, C4M_* env + Job env
+    H->>U: start
+    loop while running
+        U-->>R: progress.jsonl lines, stdout and stderr
+        R-->>D: on_progress, on_log
+        D->>M: task_progress, task_log (batched, at most every 1 s)
+    end
+    U-->>H: exit code
+    R->>R: classify the exit (OOMKilled, CUDA OOM), read metrics.json
+    D->>M: POST /tasks/{task_id}/outputs
+    D->>M: task_result {status, metrics, output_refs, error}
+```
+
 Realized (T08) as `WorkerDaemon(master_url, token, cert_fp, profile)`. `connect_once()` runs one session: open the WSS connection (`pinning_ssl_context`), pin the Master cert (`verify_fingerprint` on the presented cert), send `join` with the Capability Profile, await `join_ack` (records `worker_id`) or `join_reject` (raises `JoinRejected` with the reason), then heartbeat on an interval until the socket drops. `run(max_sessions=None)` is the reconnect loop: clean sessions reset the backoff, transient drops back off exponentially (1s→30s), and a `join_reject` is terminal (propagates — retrying won't fix the token). The `profile` is injected so the daemon is testable without hardware probes; T09's profiler supplies the real `profile()`.
 
 ## Shared / client-side modules
@@ -240,12 +510,25 @@ Realized (T08) as `WorkerDaemon(master_url, token, cert_fp, profile)`. `connect_
 
 ```python
 class Client:
-    def __init__(self, master: str, room: str): ...
+    def __init__(self, master: str, token: str): ...      # URL separate from the token (ADR-0015)
+    @classmethod
+    def from_env(cls) -> Client                           # C4M_MASTER, C4M_TOKEN
+    @classmethod
+    def from_token(cls, token: str, master: str) -> Client
     def submit_search(self, image, metric, n_trials, ...) -> JobHandle
     def submit_map(self, image, dataset, shard, ...) -> JobHandle
-    def wait(self, job: JobHandle) -> None
-    def download(self, job: JobHandle, out: Path) -> None
-    def cancel(self, job: JobHandle) -> None
+    def get_job(self, job_id: str) -> JobHandle
+    def list_jobs(self, status=...) -> list[JobHandle]
+    def fleet(self) -> FleetSnapshot
+
+class JobHandle:
+    id: str
+    def status(self) -> JobStatus
+    def wait(self, timeout=None) -> JobStatus
+    def results(self) -> list[TrialResult] | list[MapOutput]
+    def fetch(self, out: Path) -> None
+    def cancel(self) -> None
+    def progress(self) -> Iterator[...]
 ```
 
 The researcher's primary submission surface. See [wire-protocol.md §5](./wire-protocol.md#5-python-submission-api-researcher--primary-submit-surface).

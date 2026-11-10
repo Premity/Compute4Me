@@ -2,7 +2,197 @@
 
 Two layers: the **Master State Store** (durable SQLite) and the **wire/in-memory schemas** (Pydantic). All cross-process data is JSON-serialized via Pydantic; the SQLite columns hold Pydantic JSON for structured fields.
 
+## Model map
+
+*As built (T02–T09).* Every Pydantic model in [`types.py`](../../src/compute4me/types.py) and how they nest. Wire messages that carry them are in [wire-protocol.md](./wire-protocol.md#message-models).
+
+```mermaid
+classDiagram
+    direction LR
+    class CapabilityProfile {
+        host_id: str
+        gpu: GpuInfo
+        cpu_cores: int
+        ram_mb: int
+        disk_free_mb: int
+        datasets_cached: list~tuple~
+        throughput_ref: float
+        bandwidth_to_master_mbps: float
+        rtt_to_master_ms: float
+    }
+    class GpuInfo {
+        model: str
+        vram_total_mb: int
+        vram_free_mb: int
+    }
+    class TokenClaims {
+        jti: str
+        room: str
+        max_workers: int | None
+        expires_at: str
+        master_cert_fp: str
+        admin: bool
+    }
+    class Room {
+        id: str
+        name: str
+        created_at: str
+    }
+    class Worker {
+        id: str
+        room_id: str
+        token_jti: str
+        profile: CapabilityProfile
+        status: joining, idle, busy, down, quarantined
+    }
+    class Job {
+        id: str
+        room_id: str
+        type: map or search
+        spec: JSON
+        status: queued, running, completed, cancelled
+    }
+    class SearchJobSpec {
+        image, metric, direction
+        n_trials, top_k, sampler
+        search_space, inputs, env
+    }
+    class MapJobSpec {
+        image, dataset
+        shard: ShardStrategy
+        inputs, env
+    }
+    class ShardStrategy {
+        kind: whole, index-range, file-list
+        n_shards: int
+    }
+    class Task {
+        id: str
+        job_id: str
+        args: JSON
+        input_refs: list~ArtifactRef~
+        requires: TaskRequires
+        attempts: int
+    }
+    class TaskRequires {
+        min_vram_mb: int
+        gpu_required: bool
+        est_work_units: float
+    }
+    class ArtifactRef {
+        hash: str
+        shard: ShardDescriptor | None
+    }
+    class ShardDescriptor {
+        kind: whole, index-range, file-list
+        start, end, files
+    }
+    class TaskResult {
+        task_id: str
+        status: succeeded or failed
+        metrics, output_refs, error
+    }
+    class TaskError {
+        message: str
+        oom: bool
+        exit_code: int | None
+    }
+    CapabilityProfile *-- GpuInfo
+    Worker *-- CapabilityProfile
+    Worker --> Room : room_id
+    Job --> Room : room_id
+    Job ..> SearchJobSpec : spec holds a dump
+    Job ..> MapJobSpec : spec holds a dump
+    MapJobSpec *-- ShardStrategy
+    Task --> Job : job_id
+    Task *-- TaskRequires
+    Task *-- ArtifactRef
+    ArtifactRef *-- ShardDescriptor
+    TaskResult --> Task : task_id
+    TaskError ..> Task : classifies a failure
+    TokenClaims ..> Room : room
+```
+
+Planned changes, each additive: `throughput_ref` becomes optional with a `throughput_note` (T30); specs gain optional `resources` (T14); a dataset manifest model (T12); `Event` (T29).
+
 ## Master State Store (SQLite)
+
+*As built (T04).* Relationships between the tables below. Solid lines are foreign keys; dotted lines are hashes held inside JSON columns. The `events` table arrives in T29.
+
+```mermaid
+erDiagram
+    rooms ||--o{ tokens : "issues"
+    rooms ||--o{ workers : "contains"
+    rooms ||--o{ jobs : "receives"
+    tokens ||--o{ workers : "admitted"
+    jobs ||--|{ tasks : "decomposes into"
+    workers |o--o{ tasks : "assigned"
+    tasks ||--o| results : "produces"
+    tasks }o..o{ artifacts : "input_refs JSON"
+    results }o..o{ artifacts : "output_refs JSON"
+    rooms {
+        TEXT id PK
+        TEXT name UK
+        TEXT created_at
+    }
+    tokens {
+        TEXT jti PK
+        TEXT room_id FK
+        INTEGER max_workers "NULL = unlimited"
+        TEXT expires_at
+        INTEGER revoked
+        TEXT created_at
+    }
+    workers {
+        TEXT id PK
+        TEXT room_id FK
+        TEXT token_jti FK
+        TEXT host_id
+        TEXT profile_json "CapabilityProfile"
+        TEXT status
+        TEXT quarantine_until
+        TEXT last_heartbeat_at
+        TEXT joined_at
+    }
+    jobs {
+        TEXT id PK
+        TEXT room_id FK
+        TEXT type "map or search"
+        TEXT spec_json
+        TEXT status
+        INTEGER top_k
+        TEXT created_at
+        TEXT finished_at
+    }
+    tasks {
+        TEXT id PK
+        TEXT job_id FK
+        TEXT args_json
+        TEXT input_refs
+        TEXT requires_json
+        TEXT status
+        TEXT assigned_worker_id FK
+        INTEGER attempts
+        TEXT last_error
+        TEXT created_at
+        TEXT updated_at
+    }
+    artifacts {
+        TEXT hash PK "sha256"
+        TEXT name
+        TEXT version
+        TEXT kind
+        INTEGER size_bytes
+        TEXT origin
+        TEXT created_at
+    }
+    results {
+        TEXT task_id PK
+        TEXT metrics_json
+        TEXT output_refs
+        TEXT finished_at
+    }
+```
 
 Single SQLite file (`master.db` in the Master's data volume). All durable Master state lives here; recovered on restart. JSON columns hold structured sub-records validated by Pydantic on read/write.
 

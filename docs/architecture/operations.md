@@ -192,7 +192,7 @@ The in-flight Task is re-queued by the Master after a 30s heartbeat timeout; ano
 
 ### 2.4 Worker reconnect behavior
 
-Workers auto-reconnect with exponential backoff after a transient disconnect (Master restart, network blip, laptop sleep). No operator action needed. The maximum backoff is ~60s; after that, the Worker keeps trying every 60s indefinitely until told to stop.
+Workers auto-reconnect with exponential backoff after a transient disconnect (Master restart, network blip, laptop sleep): 1 s, doubling to a cap of 30 s, then every 30 s indefinitely until stopped ([daemon.py](../../src/compute4me/worker/daemon.py)). A `join_reject` (bad, expired or revoked token) is **not** retried: the Worker exits with code 3. No operator action is needed for transient drops.
 
 ## 3. Multi-Room operation
 
@@ -241,7 +241,7 @@ docker run -d --name c4m-master \
   ghcr.io/premity/compute4me:latest serve --room lab
 
 # Issue a token for the local Worker:
-TOKEN=$(docker exec c4m-master compute4me token issue --room lab --max-workers 1 --ttl 30d --quiet)
+TOKEN=$(docker exec c4m-master compute4me token issue --room lab --max-workers 1 --ttl 30d)   # stdout is only the token
 
 # Start the Worker, pointing at the local Master:
 docker run -d --name c4m-worker \
@@ -262,7 +262,6 @@ For repeatability, use Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   master:
     image: ghcr.io/premity/compute4me:latest
@@ -301,7 +300,7 @@ Bootstrap:
 ```bash
 # Start Master alone first, issue a token, set it in .env:
 docker compose up -d master
-export C4M_TOKEN=$(docker compose exec master compute4me token issue --room lab --max-workers 1 --quiet)
+export C4M_TOKEN=$(docker compose exec master compute4me token issue --room lab --max-workers 1)
 echo "C4M_TOKEN=$C4M_TOKEN" > .env
 # Now bring up the Worker:
 docker compose up -d worker
@@ -311,7 +310,7 @@ The Worker reaches the Master via the Compose-managed network (`wss://master:844
 
 ### 4.3 Quirks
 
-- The Master's self-signed cert is valid for *all* hostnames (`*` SAN). The Worker can reach it via `localhost`, `master` (Compose DNS), or any other name; the fingerprint check still works.
+- The Worker does no hostname verification: the self-signed cert has only a fixed common name, and what's checked is its **fingerprint** against the token ([ADR-0011](../adr/0011-tls-fingerprint-in-token.md)). So `localhost`, `master` (Compose DNS) or any other name works.
 - One Worker container per GPU even on a co-located setup. A 2-GPU host running both Master and Worker → two Worker containers (one per GPU) + one Master.
 - Resource competition: the Master is lightweight (it's a control plane), but if the GPU is busy with user containers, the Worker should set `--max-vram-mb` to leave headroom — otherwise the Master's modest CPU footprint contests with whatever else is going on.
 

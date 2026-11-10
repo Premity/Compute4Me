@@ -1,10 +1,49 @@
 # Deployment
 
-Practical reference for getting a Master and Workers running. Covers volume mounts, the Docker socket grant on Workers, GPU access flags, and where the CLI binary lives. Not a design document — design lives in [overview.md](./overview.md). The per-persona quick start is in [../../README.md](../../README.md).
+Practical reference for getting a Master and Workers running: volume mounts, the Docker socket grant on Workers, GPU flags, the benchmark image, and where the CLI lives. Design is in [overview.md](./overview.md); the per-persona quick start is in [../../README.md](../../README.md).
+
+> **What runs today.** Until T31 merges, `serve`, `worker` and `token issue` are not implemented in the image; the commands below are the target behaviour. Each section names the task that delivers it. Live status: [../plan.md](../plan.md#task-index).
+
+## Topology
+
+*Target topology; parts marked with a task are not built yet.* One Master host, any number of Worker hosts, each running one Worker container per GPU.
+
+```mermaid
+flowchart TB
+    subgraph LAPTOP["Researcher's laptop"]
+        CLI["pip install compute4me<br/>Python API + CLI (T23)"]
+    end
+    subgraph MH["Master host"]
+        MC["Master container<br/>compute4me serve --room R<br/>port 8443: WSS + HTTPS"]
+        MV[("volume c4m-data → /data<br/>master.db, cert + key, signing key,<br/>artifact blobs (T11)")]
+    end
+    subgraph WH["Worker host: behind NAT or a firewall, no inbound ports"]
+        WC["Worker container<br/>compute4me worker"]
+        WV[("Artifact cache<br/>/var/cache/c4m")]
+        SOCK["Host Docker daemon<br/>/var/run/docker.sock"]
+        BC["Bench container (T30)<br/>compute4me-bench"]
+        UC["User model container (T17)<br/>one per Task"]
+        GPU["NVIDIA GPU<br/>nvidia-container-toolkit"]
+    end
+    REG[("Registry<br/>compute4me, compute4me-bench,<br/>user images")]
+    MC --- MV
+    WC --- WV
+    CLI -->|"WSS + HTTPS :8443, admin token"| MC
+    WC -->|"outbound WSS + HTTPS :8443"| MC
+    WC -->|"docker CLI through the socket"| SOCK
+    SOCK -->|"starts"| BC
+    SOCK -->|"starts"| UC
+    SOCK -->|"pull"| REG
+    BC --- GPU
+    UC --- GPU
+    UC -.->|"input (ro) and output mounts,<br/>host paths (T17)"| WV
+```
+
+The dotted edge is the subtle one: the Worker asks the **host's** Docker daemon to start the user container, so every mount and `--gpus` value must be valid on the host, not inside the Worker container. [T17](../tasks/T17-runner-and-e2e.md) settles how the cache is mounted.
 
 ## The single Docker image
 
-```
+```text
 ghcr.io/premity/compute4me:latest
 ```
 
@@ -12,7 +51,7 @@ One image, two daemon modes (selected by the first arg):
 
 ```bash
 docker run ... ghcr.io/premity/compute4me:latest serve --room ROOM     # Master
-docker run ... ghcr.io/premity/compute4me:latest worker --token TOKEN  # Worker
+docker run ... ghcr.io/premity/compute4me:latest worker --master URL --token TOKEN  # Worker
 ```
 
 The image's entrypoint is the `compute4me` binary, so any subcommand works:
@@ -70,9 +109,9 @@ docker run -d --name c4m \
 
 ### Restart, upgrade, migration
 
-- **Restart:** `docker restart c4m` — state in `/data` is preserved; in-flight Jobs resume (see [PRD §8 T20](../prd.md#8-implementation-tasks-t01t27)).
+- **Restart:** `docker restart c4m`. State in `/data` is preserved; in-flight Jobs resume once T20 lands ([plan.md](../plan.md#t20-master-persistence--restart-recovery-p3-m)).
 - **Upgrade:** `docker pull` the new image, `docker stop c4m && docker rm c4m`, then run the same `docker run` again. State persists in the named volume.
-- **Migrate Master to a new host:** copy the `c4m-data` volume to the new host, run with the same volume. Tokens stay valid (self-signed cert moves with the volume). Workers reconnect automatically. *Detailed migration runbook is queued for the operational-amenities discussion.*
+- **Migrate Master to a new host:** copy the `c4m-data` volume to the new host and run with it. Tokens stay valid (the cert and signing key move with the volume); Workers need the new URL. Runbook: [operations.md §1.4](./operations.md#14-move-the-master-to-a-different-host).
 
 ## Worker deployment
 
@@ -107,17 +146,15 @@ docker run -d \
 | `--max-vram-mb N` | All available | Caps how much VRAM the Worker offers — e.g., contribute 4 GB of an 8 GB card and reserve the rest for your desktop |
 | `-d` | foreground | Detach to run as a daemon |
 
-### Throughput benchmark dependency (`bench` extra)
+### The throughput benchmark image
 
-The Worker advertises a `throughput_ref` (samples/sec on a fixed ResNet18 micro-benchmark) so the Scheduler can compare heterogeneous hosts. That benchmark — and *only* that benchmark — needs PyTorch. Real training/inference runs inside the **user's** container, which carries its own ML stack (the [Container Contract](./wire-protocol.md#1-container-contract-masterworker--user-image), ADR-0006), so torch is **not** baked into the Worker image (keeping it lean).
+The Worker advertises a `throughput_ref` (samples/sec on a fixed ResNet18 benchmark) so the Scheduler can compare hosts. Only the benchmark needs PyTorch, so it runs as **its own container**, `ghcr.io/premity/compute4me-bench:<version>`, which the Worker starts through the host Docker socket on the same GPU it was given ([ADR-0016](../adr/0016-benchmark-runs-as-a-container.md), T30). The Worker image itself contains no ML framework.
 
-Install the CUDA-matched build **once per host** at setup time — not at container start, so firewall-constrained Workers never download hundreds of MB at runtime:
+- **Pre-pull it** on slow links, before starting the Worker: `docker pull ghcr.io/premity/compute4me-bench:<version>` (several GB, once per host and version).
+- **If it can't run** (no registry access, old NVIDIA driver, no socket), the Worker still joins with `throughput_ref` unset and a note explaining why; the Scheduler falls back to peers with the same GPU model.
+- `C4M_BENCHMARK=skip` skips it (development, CI).
 
-```bash
-scripts/setup-worker.sh   # detects CUDA via nvidia-smi, installs the matching torch (or CPU build)
-```
-
-Without it, the Worker runs fine but `run_micro_benchmark` raises `BenchmarkUnavailable`; the rest of the profile (GPU/CPU/RAM/disk/cache) is gathered regardless.
+> Before T30 merges, the shipped Worker image cannot join: `profile()` fails because the image has no torch. The earlier `scripts/setup-worker.sh` installed torch on the host, which the Worker container can't see; it is removed in T30.
 
 ### Running multiple Workers on one host
 
@@ -190,7 +227,9 @@ If you're following along for the first time:
 - [ ] `c4m-data` volume mounted to `/data` on the Master
 - [ ] Port 8443 (or your chosen port) published
 - [ ] On Worker hosts: Docker + nvidia-container-toolkit (for GPU) installed
-- [ ] `c4m-cache` and `/var/run/docker.sock` mounted on each Worker
+- [ ] `c4m-cache` and `/var/run/docker.sock` mounted on each Worker (the cache mount style may change in T17: user containers need host-visible paths)
+- [ ] Bench image pre-pulled on Worker hosts with slow links
+- [ ] `compute4me doctor` passes on each Worker host (T33)
 - [ ] Invite Token issued to each Worker out-of-band; admin token issued to each submitter
 - [ ] If submitting from outside the Master host: `pip install compute4me` on the submitter's machine
 

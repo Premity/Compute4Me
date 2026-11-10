@@ -1,6 +1,8 @@
-# Compute4Me
+# Context: canonical terms
 
-A Docker-native, master-orchestrated distributed deep learning fabric for heterogeneous, internet-connected machines. Workers join a closed-membership "room" with a single `docker run` and an invite token; the master decides how to split data, trials, or model parts across them based on their advertised capabilities.
+The vocabulary every Compute4Me doc, issue, log line and identifier uses. If code and this file disagree on a name, fix one of them in the same PR.
+
+Compute4Me is a Docker-native, master-orchestrated deep-learning fabric for heterogeneous, firewall-constrained machines. Workers join a closed-membership **Room** with a single `docker run` and an **Invite Token**; the **Master** decides how to split data and trials across them based on their advertised capabilities.
 
 ## Language
 
@@ -9,7 +11,7 @@ The whole running system: one master plus the set of workers currently connected
 _Avoid_: cluster (implies admin-provisioned), swarm (overloaded with Docker Swarm and SWARM-parallelism).
 
 **Master**:
-The single logical orchestrator. Issues **Invite Tokens**, accepts **Worker** joins, holds **Capability Profiles**, decides task placement, and (in v0.1) aggregates gradients. **Workers** only ever connect *outbound* to the **Master** — there are no worker-to-worker connections by default. This makes the system work through any firewall/NAT without special config, at the cost of putting the **Master** on the data plane.
+The single logical orchestrator. Issues **Invite Tokens**, accepts **Worker** joins, holds **Capability Profiles**, decides task placement, and relays Artifacts and results (from v0.4 it also aggregates gradients; [ADR-0003](./adr/0003-master-on-data-plane.md)). **Workers** only ever connect *outbound* to the **Master** — there are no worker-to-worker connections by default. This makes the system work through any firewall/NAT without special config, at the cost of putting the **Master** on the data plane.
 _Avoid_: head node, server, coordinator (ambiguous), controller (overloaded with k8s).
 
 **Worker**:
@@ -21,19 +23,19 @@ A closed-membership compute pool owned by exactly one **Master**. Workers in one
 _Avoid_: cluster, group, project.
 
 **Invite Token**:
-A JWT-style signed credential issued by the **Master**, and a *complete bootstrap credential*: it identifies the **Room**, authorizes the holder to join as a **Worker**, and authenticates the **Master** (it carries the Master's self-signed-cert fingerprint, which the Worker pins). Fields: `room`, `max_workers` (cap on concurrent workers using this token; nullable for unlimited), `expires_at` (default 30 days), `master_cert_fp`. The Master verifies the token signature offline and tracks live worker counts per token in memory.
+A JWT-style signed credential issued by the **Master**, and a *complete bootstrap credential*: it identifies the **Room**, authorizes the holder to join as a **Worker**, and authenticates the **Master** (it carries the Master's self-signed-cert fingerprint, which the Worker pins). Claims: `jti` (revocation key), `room`, `max_workers` (cap on concurrent Workers using this token; null = unlimited), `expires_at` (default 30 days), `master_cert_fp`, `admin` (may submit Jobs; [ADR-0014](./adr/0014-admin-tokens-for-submission.md)). The Master URL is **not** in the token ([ADR-0015](./adr/0015-master-url-separate-from-token.md)). The Master verifies the signature and tracks live Worker counts per token in memory.
 _Avoid_: invite code, join key (acceptable as user-facing UX wording, but the canonical term is **Invite Token**).
 
 **Capability Profile**:
-A per-Worker record advertised on join and refreshed periodically (every ~10 min). Used by the **Master**'s scheduler to make heterogeneity-aware placement decisions. v0.1 fields:
+A per-Worker record advertised on join and refreshed periodically (~10 min). The **Scheduler** uses it for heterogeneity-aware placement. Field names as in the code ([data-model.md](./architecture/data-model.md#capability-profile)):
 
-- `host_id` — UUID, persisted in container volume, stable across restarts
-- `gpu.model`, `gpu.vram_total_mb`, `gpu.vram_free_mb` — from `nvidia-smi`, or `"cpu"` if absent
-- `cpu.cores`, `ram_mb` — from `os` / `psutil`
-- `disk.free_mb` — `shutil.disk_usage` of the data volume
-- `datasets.cached` — list of `(dataset_id, version_hash)` already unpacked locally, for **data locality** scheduling
-- `throughput_ref` — samples/sec on a fixed 30s ResNet18 micro-benchmark. Standard yardstick across all Workers; this is the field the v0.1 scheduler keys off
-- `bandwidth_to_master_mbps`, `rtt_to_master_ms` — Master-initiated probe
+- `host_id`: UUID persisted in the Worker's data volume, stable across restarts
+- `gpu.model`, `gpu.vram_total_mb`, `gpu.vram_free_mb`: from `nvidia-smi`, or model `"cpu"` if absent
+- `cpu_cores`, `ram_mb`: from `psutil`
+- `disk_free_mb`: `shutil.disk_usage` of the data volume
+- `datasets_cached`: `(dataset_id, version_hash)` pairs fully present in the local cache, for **data locality**
+- `throughput_ref`: samples/sec on the fixed ResNet18 benchmark, run as its own container ([ADR-0016](./adr/0016-benchmark-runs-as-a-container.md)); the field the v0.1 scheduler keys off. `None` when the benchmark couldn't run, with the reason in `throughput_note`
+- `bandwidth_to_master_mbps`, `rtt_to_master_ms`: measured by the Master (T10)
 
 _Avoid_: spec, resources (too generic), node info.
 
@@ -46,14 +48,21 @@ A unit of work submitted to a **Room**. A **Job** is always one of two primitive
 Both decompose into **Tasks**. The **Worker** is agnostic to which primitive produced its Task. Distributed training (one model, N synchronized workers) is a separate primitive landing in v0.4.
 
 **Task**:
-The unit of scheduling and assignment. Has `code_ref` (container image + entrypoint), `args` (config), `inputs` (artifact refs), `outputs` (artifact refs), and `requires` (resource constraints: min VRAM, GPU required, est runtime). The **Master**'s scheduler matches Tasks to **Workers** based on Task `requires` and Worker **Capability Profile**.
+The unit of scheduling and assignment. Has an `id`, its `job_id`, `args` (the config passed via `C4M_CONFIG`), `input_refs` (Artifact hashes, with a shard for Map), `requires` (`min_vram_mb`, `gpu_required`, `est_work_units`) and `attempts`. The image comes from its Job. `requires` comes from the Job's `resources` (T14). The **Master**'s scheduler matches Tasks to **Workers** based on Task `requires` and Worker **Capability Profile**.
 
 **Artifact**:
-A content-addressed blob (bytes + SHA-256 + metadata) — a dataset, a model checkpoint, or a Task output. The hash is the canonical identifier; a human name+version (`kepler-q1-q17/v3`) is a friendly alias resolving to a hash. The **Master** is the origin/source of truth; **Workers** pull Artifacts via HTTP and cache them content-addressed locally (advertised back via `datasets.cached`). Ingested via CLI upload or external-URL pull. Sharded into Tasks by **whole**, **index-range**, or **file-list** strategy.
+A content-addressed blob (bytes + SHA-256 + metadata) — a dataset, a model checkpoint, or a Task output. The hash is the canonical identifier; a human name+version (`kepler-q1-q17/v3`) is a friendly alias resolving to a hash. The **Master** is the origin/source of truth; **Workers** pull Artifacts via HTTP and cache them content-addressed locally (advertised back via `datasets_cached`). Ingested via CLI upload or external-URL pull. Sharded into Tasks by **whole**, **index-range**, or **file-list** strategy.
 _Avoid_: file, blob (acceptable internally), dataset (a dataset is one *kind* of Artifact).
 
+**Dataset**:
+An Artifact with items that a Map Job can shard (`index-range`, `file-list`). Its exact representation (a manifest of file blobs is the recommendation) is decided in T12.
+
+**Event**:
+A typed, persisted record of a state transition of a fabric object (`worker_joined`, `task_assigned`, `task_failed`, …), stored by the Master and shown by `compute4me events` ([ADR-0018](./adr/0018-logging-and-events.md)). Not an error: a Task that OOMs once and then succeeds produces events, not errors ([error-handling.md §7](./architecture/error-handling.md#7-what-is-not-an-error)).
+_Avoid_: log line (logs are a process's diagnostic narrative; events are the queryable record).
+
 **Real-time Throughput**:
-A live samples/sec measurement maintained on the **Master** by exponential-moving-average over the **Worker**'s training-step heartbeats. **Collected in v0.1 for monitoring and health alerts only**; the scheduler does not yet re-assign work based on it. Mid-training re-balancing on this signal is a v0.2 feature.
+A live samples/sec measurement maintained on the **Master** as an exponential moving average of samples the **Worker** reports while running Tasks. v0.1 has no training steps of its own, so the source is expected to be a `samples_per_sec` field in the Task's `progress.jsonl` (to be settled in T24; [plan.md Open items](./plan.md#open-items)). **Collected in v0.1 for monitoring only**; rebalancing on it is v0.2.
 
 **Scheduler**:
 The component on the **Master** that assigns **Tasks** to **Workers**. v0.1 is **smart-pull**: the Master holds a priority queue of pending Tasks; when a Worker becomes free it is handed the *best-fit* eligible Task (enough VRAM, prefer cached inputs, give a fast Worker the biggest pending Task). Frames the problem as scheduling on *unrelated parallel machines* — a Task's runtime depends on which Worker runs it. Uses a coarse (within ~2×) DL-aware **Cost Model** to estimate per-`(Task, Worker)` runtime. Runs **one Job at a time per Room** in v0.1; Jobs queue FIFO. This heterogeneity-aware placement (vs Ray's "any node with a free GPU") is the project's primary novelty.
@@ -98,10 +107,10 @@ The **Scheduler**'s estimate of how long a **Task** will take on a given **Worke
 ## Implementation stack (v0.1)
 
 - **Python throughout** (Master, Worker daemon, client lib) — matches the PyTorch/Optuna ecosystem; the Master relays and schedules rather than number-crunches, so no perf case for Go/Rust.
-- **Transport**: a single persistent *outbound* **WebSocket** Worker→Master for the control channel (heartbeats, Task dispatch, cancellation, progress); separate **HTTP** GETs for bulk Artifact pulls. WebSocket chosen over gRPC because HTTP/2 is frequently mangled by proxies/firewalls — and surviving firewalls is the whole premise (see [ADR-0003](./adr/0003-master-on-data-plane.md)).
+- **Transport**: a single persistent *outbound* **WebSocket** Worker→Master for the control channel (heartbeats, Task dispatch, cancellation, progress, logs); separate **HTTP** requests for bulk Artifacts. WebSocket rather than gRPC because HTTP/2 is often mangled by proxies and firewalls ([ADR-0007](./adr/0007-websocket-http-transport.md)).
 - **TLS**: Master holds a self-signed cert; its fingerprint rides in every **Invite Token** and the Worker pins it. No CA, no domain, no Let's Encrypt. Not mutual — the token already authenticates the Worker.
 - **Master state**: SQLite file.
-- **Interfaces**: Python API primary for job submission (`from compute4me import submit`); CLI primary for ops (`compute4me serve` / token issue / status / results). Shared client library.
+- **Interfaces**: Python API primary for Job submission (`Client.from_env().submit_search(...)`, [wire-protocol.md §5](./architecture/wire-protocol.md#5-python-submission-api-researcher--primary-submit-surface)); CLI primary for operations (`serve`, `worker`, `token`, `status`, `fetch`, …).
 - **Master** ships as a container too (`docker run compute4me serve`), symmetric with Workers.
 
 ## Failure handling (v0.1)
@@ -117,7 +126,7 @@ The **Scheduler**'s estimate of how long a **Task** will take on a given **Worke
 ## Out of scope (v0.1–v0.5)
 
 - **Models that do not fit on a single Worker's GPU.** v0.1–v0.5 assumes each **Worker** holds the entire model. This covers research models up to ~10B params on consumer 24 GB cards — essentially the entire space of "models trainable on consumer hardware." Supporting larger models requires model parallelism (FSDP, tensor parallel, pipeline parallel), which is a separate research thread sketched for v1.0+ as **master-orchestrated pipeline parallelism over a hub topology** (the layer-assignment cousin of SWARM Parallelism).
-- Byzantine-robust aggregation. Trust is established out-of-band via **Invite Token** issuance; bug-level defenses (gradient-norm sanity checks) are sufficient for closed-membership rooms.
+- Byzantine-robust aggregation. Trust is established out of band via **Invite Token** issuance; bug-level defences (finite-metric and output checks in v0.1; gradient-norm sanity checks once gradients exist in v0.4) are sufficient for closed-membership Rooms.
 - Fully-open / public **Rooms** where anyone can join without a token.
 - Cryptographic privacy (secure aggregation, differential privacy, homomorphic encryption).
 - Multi-tier / hierarchical aggregation (see [ADR-0001](./adr/0001-flat-master-not-hierarchical.md)).

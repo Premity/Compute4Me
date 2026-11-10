@@ -1,40 +1,37 @@
-# Compute4Me Docs
+# Compute4Me docs
 
-This folder holds **all project documentation**. The repo root is kept sparse (`README.md`, `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, `SECURITY.md`) so everything else lives here, organized by intent.
+All project documentation lives here. The repo root holds only the files GitHub recognises (`README.md`, `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, `SECURITY.md`) plus `CLAUDE.md` for coding assistants.
 
 ## Where to start
 
-- **Just want to understand the project?** → [../README.md](../README.md), then [architecture/overview.md](./architecture/overview.md).
-- **Going to contribute code?** → [../CONTRIBUTING.md](../CONTRIBUTING.md), then [prd.md](./prd.md) (current milestone).
-- **Designing or extending a module?** → [architecture/](./architecture/) for structure, [adr/](./adr/) for rationale.
-- **Curious about the research framing?** → [research/](./research/).
+| You want to… | Read |
+|---|---|
+| Understand the project | [../README.md](../README.md), then [architecture/overview.md](./architecture/overview.md) |
+| Pick up the next piece of work | [plan.md](./plan.md), then the task's card in [tasks/](./tasks/README.md) |
+| Know what v0.1 must do | [prd.md](./prd.md) |
+| Design or extend a module | [architecture/](./architecture/README.md) for structure, [adr/](./adr/README.md) for rationale |
+| Understand the research framing | [research/](./research/README.md) |
 
 ## What's where
 
-| Path | Purpose |
-|---|---|
-| **[prd.md](./prd.md)** | Product Requirements Document for the **current milestone** (v0.1). Scope, user stories, T-tasks, acceptance criteria, eval plan. **Rewritten per minor version**; past versions archived to [archive/](./archive/). |
-| **[context.md](./context.md)** | The canonical glossary. Definitions of **Fabric**, **Master**, **Worker**, **Room**, **Invite Token**, **Capability Profile**, **Job**, **Task**, **Artifact**, **Scheduler**, **Container Contract**, etc. |
-| **[roadmap.md](./roadmap.md)** | Forward-looking registry: what's deferred to v0.2, v0.3, …, v1.0 and why. |
-| **[architecture/](./architecture/)** | Durable architectural reference (system overview, data model, modules, wire protocol). Spans all versions; amended additively as features land. |
-| **[adr/](./adr/)** | Architectural Decision Records — one decision per file, with context, alternatives, consequences. |
-| **[research/](./research/)** | Literature-review / positioning material that informed the design. |
-| **[archive/](./archive/)** | Frozen snapshots of past-version PRDs. |
-| **[style-guide.md](./style-guide.md)** | Code + documentation style conventions. *Placeholder until after T01–T03 land.* |
-
-## Documentation lifecycle
-
-- **PRD** is *living* — it always describes the version currently in development. When v0.1.0 ships, it's archived to `archive/prd-v0.1.md` and a new `prd.md` is written for v0.2.
-- **Architecture docs** are *durable* — they evolve additively as features land. The diff per version is small relative to the total surface.
-- **ADRs** are *append-only* — once accepted, they're never edited (except status changes: `accepted` → `superseded by ADR-NNNN` if the decision is reversed in a future ADR).
-- **CONTEXT.md** is *living* — terms are added when they enter the code; existing definitions only change with care (renaming a term cascades through code + docs).
-- **ROADMAP.md** is *living* — entries are added when scope shifts; completed milestones are summarized and linked to the archived PRD.
-
-For who-updates-what-when, see [../CONTRIBUTING.md](../CONTRIBUTING.md) — the docs-in-PR convention says doc changes travel with the code that motivates them.
+| Path | Purpose | Lifecycle |
+|---|---|---|
+| [prd.md](./prd.md) | **What** the current milestone (v0.1) builds and when it's done: scope, user stories, NFRs, risks, acceptance criteria, eval runbook | Living for the milestone; archived to `archive/prd-vX.Y.md` when it ships |
+| [plan.md](./plan.md) | **Order:** phases, task index, dependency graph, open items, Definition of Done, stubs | Living; updated whenever a task's order, scope or dependencies change; archived with the PRD |
+| [tasks/](./tasks/README.md) | **How:** one card per task (background, decisions to settle, steps, tests, Docker verification, fallbacks) | Written before the task's phase; Status and History updated in the task's PR |
+| [context.md](./context.md) | Canonical glossary | Living; a renamed term changes code and docs in the same PR |
+| [roadmap.md](./roadmap.md) | What's deferred to v0.2 … v1.0 and why | Living; every "deferred" mention elsewhere must appear here |
+| [architecture/](./architecture/README.md) | Durable structure: overview, data model, modules, wire protocol, errors, deployment, operations, test map | Amended as features land; describes what exists, with planned items marked by task |
+| [adr/](./adr/README.md) | One architectural decision per file | Small changes edited in place with a History line; reversals superseded by a new ADR |
+| [background/challenges-faced.md](./background/challenges-faced.md) | Real problems hit and how they were solved | Appended in the PR that solves each one |
+| [research/](./research/README.md) | Related work and positioning that informed the design | Updated when the positioning changes |
+| [style-guide.md](./style-guide.md) | Code, logging and docs conventions | Living |
+| [archive/](./archive/) | Frozen past-version PRDs and plans | Append-only |
 
 ## Conventions
 
-- **Lowercase filenames** under `docs/` (`prd.md`, not `PRD.md`). Uppercase reserved for the GitHub-recognized root files (`README.md`, `LICENSE`, etc.).
-- **Relative markdown links** throughout (`[overview](./architecture/overview.md)`), not absolute paths or rendered HTML.
-- **ASCII diagrams** over rendered images — diffable, copy-pasteable, no external dependencies.
-- **Cross-references over duplication.** When two docs need the same content, one owns it and the other links.
+- **Lowercase file names** under `docs/` (`prd.md`, not `PRD.md`).
+- **Relative links** throughout (`[overview](./architecture/overview.md)`); anchors must match a real heading (checked from T28).
+- **Mermaid** for every diagram, rendered locally before committing ([style-guide.md §Diagrams](./style-guide.md#diagrams)).
+- **One owner per fact.** When two docs need the same content, one owns it and the other links. When they disagree, the PRD wins, and the other is fixed in the same PR.
+- **Who updates what, when:** the "Documentation travels with code" table in [../CONTRIBUTING.md](../CONTRIBUTING.md#documentation-travels-with-code).

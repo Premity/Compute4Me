@@ -1,512 +1,355 @@
-# Compute4Me PRD — v0.1 (in development)
+# Compute4Me PRD — v0.1
 
-> **Status:** v0.1 is the current milestone in active development. When v0.1 ships (`v0.1.0` tag), this document is archived to `docs/archive/prd-v0.1.md` and rewritten for v0.2.
+| | |
+|---|---|
+| **Milestone** | v0.1 (in development) |
+| **Status** | Accepted; the single source of truth for *what* v0.1 is and *when it is done* |
+| **Last revised** | 2026-11-10 (planning rewrite: task specs moved to [plan.md](./plan.md) and [tasks/](./tasks/README.md); NFRs and open items added) |
+| **Progress** | P0 done; P1 in progress (T01–T09 merged). Live status: [plan.md](./plan.md#task-index) |
+
+> **What this document is for.** It says **what** v0.1 builds, **why**, and **what counts as done**. **How and in what order** is in [plan.md](./plan.md) and the task cards in [tasks/](./tasks/README.md). Terminology is in [context.md](./context.md), durable structure in [architecture/](./architecture/README.md), the reasons for structural choices in [adr/](./adr/README.md), and what comes after v0.1 in [roadmap.md](./roadmap.md). If this PRD and another document disagree, **this PRD wins**; fix the other document in a PR.
 >
-> **Scope:** this PRD specifies **v0.1**. Later milestones (v0.2–v1.0) live in [roadmap.md](./roadmap.md).
-> **Terminology:** [context.md](./context.md).
-> **Architecture:** [architecture/](./architecture/) — durable across versions; this PRD references rather than duplicates.
-> **Decisions:** [adr/](./adr/).
-> **Workflow:** [../CONTRIBUTING.md](../CONTRIBUTING.md).
+> **Lifecycle.** When v0.1 ships (`v0.1.0` tag), this file is archived to `docs/archive/prd-v0.1.md` and rewritten for v0.2.
 
 ---
 
-## 0. How to Use This PRD
+## 1. Vision and scope
 
-This document is split into a **reference half** (§1–§7), the **execution plan** (§8 — the T-task list), and an **execution-adjacent reference half** (§9–§14: eval runbook, testing, risks, acceptance criteria, out of scope, further notes). Each T-task is self-contained — prerequisites, deliverables, file paths, and acceptance criteria — so it can be lifted into its own task file and handed to a coding agent.
+### 1.1 Problem
 
-Conventions:
-- **T-IDs** identify implementation tasks. Format: `T<nn>`, grouped into dependency-ordered phases.
-- **Phases** (not time-boxed — this is a solo research build):
-  - **P0 — Scaffolding** (T01–T04): repo, types, state store, container image.
-  - **P1 — Control-plane bootstrap** (T05–T10): tokens, transport, join, capability profiling. *Tracer bullet: a Worker joins; the Master records its profile.*
-  - **P2 — Job execution core** (T11–T17): artifact store, decomposer, cost model, scheduler, container runner. *Tracer bullet: a tiny Search Job runs E2E on fake Workers.*
-  - **P3 — Reliability** (T18–T21): heartbeat, retries, quarantine, persistence, cancellation.
-  - **P4 — Interfaces & observability** (T22–T24): CLI, Python API, SDK, status view.
-  - **P5 — Eval & research harness** (T25–T27): `spacesight` images, 3-arm scheduler experiment, scale simulation.
-- **Greenfield repo.** No code exists yet; these tasks establish the patterns.
-
----
-
-## 1. Vision & Scope
-
-### 1.1 Problem Statement
-
-I'm an ML researcher with limited, scattered compute: a handful of lab GPU machines, a CPU box, and the occasional GPU I could borrow from someone nearby. I want to use all of it together to get my deep-learning work done faster — running many model variants, scoring large datasets, sweeping hyperparameters.
+An ML researcher has limited, scattered compute: a handful of lab GPU machines, a CPU box, and the occasional GPU borrowed from someone nearby. They want to use all of it together to get deep-learning work done faster: running many model variants, scoring large datasets, sweeping hyperparameters.
 
 The existing tools don't fit:
 
-- **Ray / Horovod / PyTorch DDP** assume a cluster I administer: nodes I provision, SSH into, configure firewalls for, and add by hand. Getting a friend's machine — or even my own lab machines, which can't freely reach each other on our segmented LAN — into a job is painful.
-- **Hivemind / SWARM** can pool internet volunteers, but force me to rewrite my model into their decentralized Mixture-of-Experts framework. Useless for a standard model like my InceptionResNet exoplanet detector.
-- All of them treat my heterogeneous hardware as interchangeable — they don't know my RTX 3070 is 4× faster than my GTX 1060, or that one machine already has the dataset cached.
+- **Ray / Horovod / PyTorch DDP** assume a cluster you administer: nodes you provision, SSH into, configure firewalls for, and add by hand. Getting a friend's machine, or even your own lab machines on a segmented LAN where they can't reach each other, into a job is painful.
+- **Hivemind / SWARM** can pool internet volunteers, but force the model into their decentralised Mixture-of-Experts framework. That is useless for a standard model such as an InceptionResNet exoplanet detector.
+- All of them treat heterogeneous hardware as interchangeable. They don't know an RTX 3070 is several times faster than a GTX 1060, or that one machine already has the dataset cached.
 
-I want something I can actually use, where a machine joins with **one `docker run`**, brings a **standard containerized model** (no framework rewrite), and the system is **smart about my heterogeneous, firewall-constrained fleet**.
+The goal: a machine joins with **one `docker run`**, brings a **standard containerised model** (no framework rewrite), and the system is **smart about a heterogeneous, firewall-constrained fleet**.
 
 ### 1.2 Solution
 
-**Compute4Me** is a Docker-native, master-orchestrated compute **Fabric** for embarrassingly-parallel deep-learning work on heterogeneous, firewall-constrained machines. See [architecture/overview.md](./architecture/overview.md) for the one-paragraph description, the high-level diagram, and the end-to-end flow.
+**Compute4Me** is a Docker-native, master-orchestrated compute **Fabric** for embarrassingly parallel deep-learning work on heterogeneous, firewall-constrained machines. [architecture/overview.md](./architecture/overview.md) has the one-paragraph description, the diagram and the end-to-end flow.
 
-v0.1 makes my lab + a friend's GPU usefully poolable for HPO and batch inference, and doubles as the substrate for a research contribution: **automatic, DL-aware, heterogeneity-native scheduling for containerized volunteer fabrics**.
+v0.1 makes a lab plus a friend's GPU usefully poolable for hyperparameter search and batch inference, and doubles as the substrate for a research contribution: **automatic, DL-aware, heterogeneity-native scheduling for containerised volunteer fabrics** ([research/novelty.md](./research/novelty.md)).
 
-### 1.3 v0.1 Scope (locked)
+### 1.3 v0.1 scope (locked)
 
-- **Two Job primitives:** Map and Search ([ADR-0009](./adr/0009-map-search-primitives.md)). No distributed *training* (that's v0.4).
-- **Closed-membership Rooms** via signed Invite Tokens; trust established out-of-band ([ADR-0002](./adr/0002-closed-membership-rooms.md)). Admin capability on tokens for Job submission ([ADR-0014](./adr/0014-admin-tokens-for-submission.md)). No Byzantine defenses.
-- **Models that fit on a single Worker GPU** ([ADR-0004](./adr/0004-big-models-out-of-scope.md)) — covers ~10B params on a 24 GB card.
-- **One Job at a time per Room**, FIFO queue. Multi-Job concurrency is v0.2.
-- **Master on the data plane**, Workers outbound-only ([ADR-0003](./adr/0003-master-on-data-plane.md)). Master URL passed separately from token so the Master can be moved without re-issuing tokens ([ADR-0015](./adr/0015-master-url-separate-from-token.md)).
-- **Real-time throughput collected for monitoring only** — the scheduler keys off the join-time micro-benchmark.
-- **Container Contract** with env-vars-in / files-out, plus `env={...}` Job-spec pass-through so users' model images reach W&B / MLflow / TensorBoard / etc. directly without Compute4Me proxying ([ADR-0006](./adr/0006-black-box-container-contract.md), [wire-protocol.md §1](./architecture/wire-protocol.md)).
-- **CLI surface:** flat with one nested `token` group; five-command observability split (`status`, `progress`, `logs`, `events`, `fetch`); foreground-default for `serve`/`worker` ([ADR-0013](./adr/0013-cli-design-and-observability.md)).
+- **Two Job primitives:** Map and Search ([ADR-0009](./adr/0009-map-search-primitives.md)). No distributed *training* (v0.4).
+- **Closed-membership Rooms** via signed Invite Tokens; trust established out of band ([ADR-0002](./adr/0002-closed-membership-rooms.md)); an admin capability for Job submission ([ADR-0014](./adr/0014-admin-tokens-for-submission.md)). No Byzantine defences.
+- **Models that fit on a single Worker GPU** ([ADR-0004](./adr/0004-big-models-out-of-scope.md)).
+- **One Job at a time per Room**, FIFO. Multi-Job concurrency is v0.2.
+- **Master on the data plane, Workers outbound-only** ([ADR-0003](./adr/0003-master-on-data-plane.md)); the Master URL is passed separately from the token ([ADR-0015](./adr/0015-master-url-separate-from-token.md)).
+- **Measured capability:** each Worker runs a fixed throughput benchmark at join, as its own container ([ADR-0016](./adr/0016-benchmark-runs-as-a-container.md)). Real-time throughput is collected for monitoring only.
+- **Container Contract:** env-vars-in, files-out, plus `env={...}` pass-through for W&B / MLflow / TensorBoard ([ADR-0006](./adr/0006-black-box-container-contract.md), [wire-protocol.md §1](./architecture/wire-protocol.md#1-container-contract-masterworker--user-image)).
+- **CLI:** flat, one nested `token` group, five observability commands, foreground by default ([ADR-0013](./adr/0013-cli-design-and-observability.md)), built on structured logs and a persisted event stream ([ADR-0018](./adr/0018-logging-and-events.md)).
 
 ### 1.4 Audience
 
-Researchers with lab GPUs + friends' consumer GPUs — the majority of ML work that fits on one card. Compute4Me deliberately does **not** target the train-a-70B-model audience, who have cloud/supercomputer options.
+Researchers with lab GPUs and friends' consumer GPUs: the majority of ML work that fits on one card. Compute4Me deliberately does **not** target people training 70B-parameter models, who have cloud and supercomputer options.
 
-### 1.5 Out of Scope (summary)
+### 1.5 Out of scope (summary)
 
-Full registry in §13 and [roadmap.md](./roadmap.md). Headlines: distributed training (v0.4), WAN sync regimes (v0.5), big-model inference/training (v0.6/v1.0). **Never in this design:** open/public Rooms, Byzantine-robust aggregation, cryptographic privacy, hierarchical aggregation, Master HA.
-
----
-
-## 2. Personas & Eval Workload
-
-### 2.1 Hamda — Operator + Researcher (primary)
-
-ML researcher. Owns 4 lab GPU machines (mixed: e.g. RTX 3070, RTX 3060, 2× GTX 1060) on a segmented LAN, plus a CPU box, plus a small VPS to host the Master. Runs HPO sweeps and batch inference for the `spacesight` exoplanet-detection work. Wants: one command to pool everything, smart placement, and a clean results download. Is also the paper author — needs the run to double as an experiment.
-
-### 2.2 Ali — Contributor (secondary)
-
-Friend with an RTX 3070 in his apartment behind a home NAT. Will run a container if it's *one command and touches nothing else on his machine*. Will not configure SSH, port-forwarding, or a firewall rule. Trusted (Hamda vouches for him) but his machine is flaky — he may close his laptop mid-run.
-
-### 2.3 The Lab Fleet — Contributors (batch)
-
-Four lab machines admitted under a single `max_workers=4` token. On a segmented LAN where the machines can reach the VPS Master but not freely reach each other — exactly the case that breaks Ray's peer-to-peer assumptions.
-
-### 2.4 Eval Workload — `spacesight`
-
-The concrete v0.1 workload is the **InceptionResNet exoplanet detector** over Kepler light curves:
-
-- **Search Job:** an Optuna HPO sweep (~32–64 trials) over learning rate, dropout, augmentation strength.
-- **Map Job:** batch inference / scoring over a large light-curve dataset, sharded by file-list.
-
-This is also the centerpiece of the research eval (§9).
+Full list in §14 and [roadmap.md](./roadmap.md). Headlines: distributed training (v0.4), WAN sync regimes (v0.5), big-model inference and training (v0.6, v1.0). **Never in this design:** open/public Rooms, Byzantine-robust aggregation, cryptographic privacy, hierarchical aggregation, Master HA.
 
 ---
 
-## 3. End-to-End Flow
+## 2. Personas and eval workload
 
-See [architecture/overview.md §End-to-end flow](./architecture/overview.md) for the ASCII trace through operator startup → token issue → Worker join → Job submit → schedule → run → collect.
+### 2.1 Hamda: operator and researcher (primary)
 
-### 3.1 Lifecycle states
+ML researcher. Owns four lab GPU machines (mixed, e.g. RTX 3070, RTX 3060, 2× GTX 1060) on a segmented LAN, plus a CPU box, plus a small VPS to host the Master. Runs hyperparameter sweeps and batch inference for the `spacesight` exoplanet-detection work. Wants one command to pool everything, smart placement, and a clean results download. Also the paper author, so each eval run must double as an experiment record ([ADR-0019](./adr/0019-experiment-run-records.md)).
 
-- **Worker:** `joining → idle → busy → (down | quarantined) → idle`.
-- **Task:** `pending → assigned → running → (succeeded | failed-retryable | failed-permanent)`.
-- **Job:** `queued → running → (completed | cancelled)`; completes when all Tasks reach a terminal state.
+### 2.2 Ali: contributor (secondary)
+
+A friend with an RTX 3070 at home behind a NAT. Will run a container if it is *one command and touches nothing else on the machine*. Will not configure SSH, port forwarding or a firewall rule. Trusted (the operator vouches for him), but the machine is flaky: the laptop may close mid-run.
+
+### 2.3 The lab fleet: contributors (batch)
+
+Four lab machines admitted under one `max_workers=4` token. They can reach the VPS Master but not each other: exactly the case that breaks Ray's peer-to-peer assumptions.
+
+### 2.4 Eval workload: `spacesight`
+
+The **InceptionResNet exoplanet detector** over Kepler light curves:
+
+- **Search Job:** an Optuna sweep (~32–64 trials) over learning rate, dropout and augmentation strength.
+- **Map Job:** batch inference over a large light-curve dataset, sharded by file list.
+
+This is also the centrepiece of the research eval (§9).
+
+---
+
+## 3. End-to-end flow and lifecycle states
+
+[architecture/overview.md](./architecture/overview.md#end-to-end-flow) traces operator start-up → token issue → Worker join → Job submit → schedule → run → collect, with sequence diagrams.
+
+| Object | States |
+|---|---|
+| **Worker** | `joining → idle → busy → (down \| quarantined) → idle` |
+| **Task** | `pending → assigned → running → (succeeded \| failed)`; a failed Task with attempts left returns to `pending` |
+| **Job** | `queued → running → (completed \| cancelled)`; completes when every Task is terminal |
+
+State diagrams: [overview.md §Lifecycle states](./architecture/overview.md#lifecycle-states).
 
 ---
 
 ## 4. Architecture (reference only)
 
-Architecture is documented separately because it's **durable across versions**. v0.1 establishes it; v0.2+ extends additively.
+The architecture docs are **durable across versions**; this PRD links rather than duplicates.
 
-- **[architecture/overview.md](./architecture/overview.md)** — high-level diagram, component responsibilities, network model, stack.
-- **[architecture/data-model.md](./architecture/data-model.md)** — SQLite schema + Pydantic schemas.
-- **[architecture/modules.md](./architecture/modules.md)** — interface signatures for every module.
-- **[architecture/wire-protocol.md](./architecture/wire-protocol.md)** — Container Contract, WS control channel, HTTP artifact channel, CLI, Python API.
-
-The PRD references these rather than duplicating them. When v0.2 begins, this section's links stay; the architecture docs receive additive amendments.
+| Doc | Covers |
+|---|---|
+| [overview.md](./architecture/overview.md) | Components, network model, end-to-end flow, state machines |
+| [data-model.md](./architecture/data-model.md) | SQLite schema, Pydantic models |
+| [modules.md](./architecture/modules.md) | Interface of every module |
+| [wire-protocol.md](./architecture/wire-protocol.md) | Container Contract, control channel, artifact channel, CLI, Python API |
+| [error-handling.md](./architecture/error-handling.md) | Error format, exit codes, exception hierarchy |
+| [deployment.md](./architecture/deployment.md), [operations.md](./architecture/operations.md) | Running and maintaining a deployment |
+| [test-map.md](./architecture/test-map.md) | Which checks run where |
 
 ---
 
-## 5. Repo Layout (planned)
+## 5. Repository layout
 
-```
-compute4me/
-├── README.md                       # public-facing intro
-├── LICENSE
-├── CONTRIBUTING.md                 # dev workflow (branching, commits, PRs, tests, manual phase)
-├── CHANGELOG.md
-├── SECURITY.md
-├── .pre-commit-config.yaml         # local hooks (ruff + mypy + md link check)
-├── .github/
-│   ├── workflows/ci.yml            # ci-test + ci-lint + ci-types jobs
-│   ├── PULL_REQUEST_TEMPLATE.md
-│   └── ISSUE_TEMPLATE/{polish,bug}.md, config.yml
-├── pyproject.toml                  # uv-managed; Python 3.13
-├── Dockerfile                      # single image: `serve` and `worker` entrypoints
-├── docker-compose.dev.yml          # local: 1 master + 2 fake workers for E2E smoke test
-├── Makefile                        # make dev / test / image / e2e
-├── docs/                           # everything in this folder
-│   ├── README.md
-│   ├── prd.md  (this file)
-│   ├── context.md
-│   ├── roadmap.md
-│   ├── adr/
-│   ├── architecture/
-│   ├── research/
-│   └── archive/                    # archived PRDs of past versions
+```text
+Compute4Me/
+├── README.md  CONTRIBUTING.md  CHANGELOG.md  SECURITY.md  CLAUDE.md  LICENSE
+├── pyproject.toml  uv.lock  .python-version  Makefile
+├── Dockerfile                  # one image: `serve` and `worker`
+├── docker-compose.dev.yml      # Master + Worker for the join smoke test
+├── bench/                      # the benchmark image (T30, ADR-0016)
 ├── src/compute4me/
-│   ├── __init__.py                 # public API
-│   ├── types.py                    # Pydantic models (CapabilityProfile, Job specs, Task, ...)
-│   ├── proto/messages.py           # WS wire message models
-│   ├── cli.py                      # serve / worker / token / status / progress / logs / events / fetch / jobs / cancel
-│   ├── master/
-│   │   ├── server.py               # WS + HTTP app
-│   │   ├── tokens.py
-│   │   ├── scheduler.py
-│   │   ├── cost_model.py
-│   │   ├── decomposer.py
-│   │   ├── failure.py
-│   │   ├── artifacts.py
-│   │   ├── state.py
-│   │   └── samplers/{base.py, optuna_sampler.py}
-│   ├── worker/
-│   │   ├── daemon.py
-│   │   ├── profiler.py
-│   │   ├── runner.py
-│   │   └── cache.py
-│   ├── sdk/__init__.py             # c4m.config / input_dir / output_dir / report / progress
-│   └── client/api.py               # Client.submit_search / submit_map / wait / download
-├── scripts/
-│   └── check_md_links.py
-├── tests/
-│   ├── INDEX.md                    # map of T-task → test files
-│   ├── unit/                       # cost_model, scheduler, decomposer, tokens, failure, artifacts
-│   ├── fakes/                      # FakeWorker, fake hw probes, fake container runner
-│   └── integration/test_e2e_search.py
-└── examples/
-    └── resnet18_hpo/               # sample user container honoring the Container Contract
+│   ├── __init__.py  types.py  errors.py  cli.py  log.py  events.py
+│   ├── proto/messages.py       # control-channel messages
+│   ├── master/                 # server, tokens, state, artifacts, decomposer, cost_model,
+│   │                           #   scheduler, failure, samplers/
+│   ├── worker/                 # daemon, profiler, docker, runner, cache
+│   ├── client/api.py           # Python submission API
+│   └── sdk/__init__.py         # optional sugar for user containers
+├── tests/                      # unit/, integration/, fakes/, conftest.py, INDEX.md
+├── examples/                   # sample user images (Container Contract)
+├── scripts/                    # check_md_links.py, smoke/, manual/
+└── docs/                       # prd, plan, tasks/, context, roadmap, architecture/, adr/,
+                                #   background/, research/, archive/, style-guide
 ```
+
+Files that don't exist yet are created by the task named in [plan.md](./plan.md).
 
 ---
 
-## 6. User Stories
+## 6. User stories
 
 ### Joining and membership
+
 1. As an operator, I want to start a Master and open a named Room, so that Workers have something to join.
 2. As an operator, I want to issue an Invite Token for a Room, so that I can admit a specific contributor.
 3. As an operator, I want to set `max_workers` on a token (or leave it unlimited), so that I can cap how many concurrent Workers a token admits.
 4. As an operator, I want tokens to expire (default 30 days), so that a leaked or forgotten token doesn't stay valid forever.
-5. As an operator, I want to issue multiple tokens for the same Room with different limits, so that I can give my lab a 4-worker token and a guest a single-use one.
-6. As an operator, I want to revoke a token, so that I can kick a contributor without disrupting the others.
-7. As a contributor, I want to join a Room with a single `docker run ... --token ...`, so that I don't have to configure SSH, firewalls, or open ports.
-8. As a contributor, I want my machine to connect outbound only, so that I can contribute from behind a NAT or corporate firewall without special permission.
-9. As a contributor, I want to run one container per GPU, so that I can contribute multiple cards from one host.
+5. As an operator, I want to issue several tokens for the same Room with different limits, so that I can give my lab a 4-Worker token and a guest a single-use one.
+6. As an operator, I want to revoke a token, so that I can remove a contributor without disrupting the others.
+7. As a contributor, I want to join a Room with a single `docker run`, so that I don't have to configure SSH, firewalls or open ports.
+8. As a contributor, I want my machine to connect outbound only, so that I can contribute from behind a NAT or corporate firewall.
+9. As a contributor, I want to run one container per GPU, so that I can contribute several cards from one host.
 10. As a contributor, I want the Master's identity verified automatically when I join, so that my token can't be replayed against an impostor Master.
+11. As a contributor, I want one command that tells me whether my host can be a Worker (Docker, GPU, network), so that I find problems before joining. *(Added 2026-11-10, T33.)*
 
 ### Capability discovery
-11. As the Scheduler, I want each Worker to advertise GPU model, total/free VRAM, CPU cores, and RAM on join, so that I can filter out Workers that can't run a Task.
-12. As the Scheduler, I want each Worker to run a fixed throughput micro-benchmark on join, so that I have a comparable speed estimate before any real work runs.
-13. As the Scheduler, I want each Worker to report which datasets it already has cached, so that I can prefer placing data-heavy Tasks where the data already is.
-14. As the Scheduler, I want each Worker to report free disk and bandwidth/latency to the Master, so that I can avoid sending huge datasets to Workers that can't hold them or fetch them quickly.
-15. As an operator, I want Workers to refresh their profile periodically, so that the Scheduler reacts to changing free VRAM or measured throughput.
+
+12. As the Scheduler, I want each Worker to advertise GPU model, total/free VRAM, CPU cores and RAM on join, so that I can filter out Workers that can't run a Task.
+13. As the Scheduler, I want each Worker to run a fixed throughput benchmark on join, so that I have a comparable speed estimate before any real work runs.
+14. As the Scheduler, I want each Worker to report which datasets it already has cached, so that I can prefer placing data-heavy Tasks where the data already is.
+15. As the Scheduler, I want each Worker's free disk and bandwidth/latency to the Master, so that I avoid sending huge datasets to Workers that can't hold or fetch them quickly.
+16. As an operator, I want Workers to refresh their profile periodically, so that the Scheduler reacts to changing free VRAM.
 
 ### Submitting and running work
-16. As a researcher, I want to submit a Search Job describing a model image, a search space, and a metric, so that the Fabric runs my hyperparameter sweep across the Room.
-17. As a researcher, I want to express the search space with Optuna, so that I get TPE/Bayesian sampling without learning a new DSL.
-18. As a researcher, I want to alternatively pass a plain list of configs, so that I can run a simple grid without Optuna.
-19. As a researcher, I want to submit a Map Job describing a model image, an input dataset, and a shard strategy, so that the Fabric runs inference/eval/preprocessing over shards in parallel.
-20. As a researcher, I want to keep only the top-K results of a Search, so that I'm not drowned in artifacts from a 64-trial sweep.
-21. As a researcher, I want my model container to receive its config and inputs via env vars and mounted directories, so that I don't have to import any Compute4Me library into my model code.
-22. As a researcher, I want my container to report results by writing files to an output directory, so that the contract is debuggable and language-agnostic.
-23. As a researcher, I want to optionally use a small SDK helper to read config and report metrics, so that I get ergonomics when I want them without being forced into them.
-24. As a researcher, I want to run my container locally with the same env vars, so that I can reproduce exactly what a Worker does when debugging.
 
-### Scheduling behavior
-25. As the Scheduler, I want to hand a free Worker the best-fit eligible Task rather than the next one in line, so that fast Workers get the heaviest Tasks.
-26. As the Scheduler, I want to estimate each Task's runtime per Worker from a coarse cost model, so that I can minimize overall makespan on a heterogeneous fleet.
-27. As the Scheduler, I want to prefer Workers that already cache a Task's inputs, so that I minimize data transfer.
-28. As the Scheduler, I want to refuse to place a Task on a Worker without enough VRAM, so that the model can actually fit.
-29. As an operator, I want one Job to run at a time per Room with others queued FIFO, so that v0.1 behavior is predictable.
-30. As a researcher, I want a fast Worker to naturally pull more Tasks than a slow one, so that the fleet self-balances without manual tuning.
+17. As a researcher, I want to submit a Search Job describing a model image, a search space and a metric, so that the Fabric runs my sweep across the Room.
+18. As a researcher, I want to express the search space with Optuna-style distributions, so that I get TPE sampling without learning a new DSL.
+19. As a researcher, I want to pass a plain list of configs instead, so that I can run a simple grid.
+20. As a researcher, I want to submit a Map Job describing a model image, an input dataset and a shard strategy, so that the Fabric runs inference, evaluation or preprocessing over shards in parallel.
+21. As a researcher, I want to keep only the top-K results of a Search, so that I'm not drowned in artifacts from a 64-trial sweep.
+22. As a researcher, I want to state a Task's resource needs (VRAM, GPU, relative size), so that the Scheduler can place it sensibly. *(Added 2026-11-10, T14.)*
+23. As a researcher, I want my container to receive its config and inputs via env vars and mounted directories, so that I don't import any Compute4Me library.
+24. As a researcher, I want my container to report results by writing files, so that the contract is debuggable and language-agnostic.
+25. As a researcher, I want an optional small SDK to read config and report metrics, so that I get ergonomics without being forced into them.
+26. As a researcher, I want to run my container locally with the same env vars, so that I can reproduce exactly what a Worker does.
+
+### Scheduling behaviour
+
+27. As the Scheduler, I want to hand a free Worker the best-fit eligible Task rather than the next in line, so that fast Workers get the heaviest Tasks.
+28. As the Scheduler, I want to estimate each Task's runtime per Worker from a coarse cost model, so that I can shorten overall makespan on a heterogeneous fleet.
+29. As the Scheduler, I want to prefer Workers that already cache a Task's inputs, so that I minimise data transfer.
+30. As the Scheduler, I want to refuse to place a Task on a Worker without enough VRAM, so that the model fits.
+31. As an operator, I want one Job to run at a time per Room with others queued FIFO, so that v0.1 behaviour is predictable.
+32. As a researcher, I want a fast Worker to naturally pull more Tasks than a slow one, so that the fleet self-balances.
 
 ### Artifacts
-31. As a researcher, I want to push a dataset to the Master from my laptop or from an external URL, so that the Fabric can distribute it.
-32. As the Fabric, I want artifacts identified by content hash, so that Workers can cache, dedup, and verify them.
-33. As a Worker, I want to fetch only the shard I'm assigned, so that I don't download an 80 GB dataset to process 1/20th of it.
-34. As a Worker, I want to skip downloading an artifact I already have cached, so that repeated Jobs on the same data are fast.
-35. As a researcher, I want to download my Job's results from the Master via the CLI, so that I can collect metrics and checkpoints.
+
+33. As a researcher, I want to push a dataset to the Master from my laptop or from a URL, so that the Fabric can distribute it.
+34. As the Fabric, I want artifacts identified by content hash, so that Workers can cache, dedup and verify them.
+35. As a Worker, I want to fetch only the shard I'm assigned, so that I don't download an 80 GB dataset to process 1/20th of it.
+36. As a Worker, I want to skip downloading an artifact I already have, so that repeated Jobs on the same data are fast.
+37. As a researcher, I want to download my Job's results via the CLI, so that I can collect metrics and checkpoints.
 
 ### Reliability
-36. As an operator, I want a Worker that stops responding to be detected within ~30s and its Task re-queued, so that one machine dropping doesn't stall the Job.
-37. As an operator, I want a failed Task retried up to 3 times, so that transient failures self-heal.
-38. As the Scheduler, I want an OOM-failed Task retried on a Worker with more VRAM, so that a too-big trial lands somewhere it fits.
-39. As an operator, I want a permanently-failed Task surfaced without blocking the rest of the Job, so that one bad trial doesn't sink a 64-trial sweep.
-40. As an operator, I want a Worker that fails repeatedly to be quarantined briefly then auto-restored, so that a flaky machine doesn't poison the run but isn't permanently lost.
-41. As the Fabric, I want returned metrics validated as finite and outputs validated against a schema, so that buggy Workers' garbage results are caught.
-42. As an operator, I want the Master to persist its state, so that restarting it (or my laptop) resumes the Job instead of losing it.
-43. As a researcher, I want to cancel a running Job and still get the results collected so far, so that I can stop early without losing partial progress.
+
+38. As an operator, I want a Worker that stops responding to be detected within ~30 s and its Task re-queued, so that one machine dropping doesn't stall the Job.
+39. As an operator, I want a failed Task retried up to 3 times, so that transient failures self-heal.
+40. As the Scheduler, I want an OOM-failed Task retried on a Worker with more VRAM, so that a too-big trial lands somewhere it fits.
+41. As an operator, I want a permanently failed Task surfaced without blocking the rest of the Job, so that one bad trial doesn't sink a sweep.
+42. As an operator, I want a Worker that fails repeatedly to be quarantined briefly and then restored, so that a flaky machine doesn't poison the run but isn't lost.
+43. As the Fabric, I want returned metrics validated as finite and outputs checked against what was declared, so that buggy Workers' garbage is caught.
+44. As an operator, I want the Master to persist its state, so that restarting it resumes the Job instead of losing it.
+45. As a researcher, I want to cancel a running Job and still get the results collected so far.
 
 ### Observability
-44. As an operator, I want a status view of the Room — connected Workers, their profiles, live throughput, quarantine events — so that I can see what's happening.
-45. As a researcher, I want live progress from running Tasks, so that I can watch a sweep proceed.
+
+46. As an operator, I want a status view of the Room (connected Workers, profiles, live throughput, quarantine events), so that I can see what's happening.
+47. As a researcher, I want live progress and logs from running Tasks, so that I can watch a sweep and debug a failing trial.
+48. As an operator, I want a queryable history of state changes (joins, assignments, failures), so that I can explain what happened after the fact. *(Added 2026-11-10, ADR-0018.)*
 
 ---
 
-## 7. Implementation Decisions (ADR Index)
+## 7. Decisions (ADR index)
 
-All architectural decisions recorded in [adr/](./adr/). Headline list:
+All in [adr/](./adr/README.md). Headlines:
 
-- **Closed-membership Rooms via signed Invite Tokens.** ([ADR-0002](./adr/0002-closed-membership-rooms.md))
-- **Master on the data plane; Workers connect outbound only.** ([ADR-0003](./adr/0003-master-on-data-plane.md))
-- **Flat single Master.** Hierarchy held as later-additive via three rules. ([ADR-0001](./adr/0001-flat-master-not-hierarchical.md))
-- **Roll our own orchestration, not Ray.** ([ADR-0005](./adr/0005-roll-our-own-orchestration.md))
-- **Two primitives — Map and Search.** Pipeline arrives in v0.6. ([ADR-0009](./adr/0009-map-search-primitives.md))
-- **Black-box container contract (env-vars-in / files-out), optional SDK sugar.** ([ADR-0006](./adr/0006-black-box-container-contract.md))
-- **Smart-pull scheduling** with a coarse DL-aware cost model. ([ADR-0008](./adr/0008-smart-pull-scheduling.md))
-- **Wrap Optuna behind a pluggable Sampler interface.** ([ADR-0010](./adr/0010-wrap-optuna.md))
-- **Content-addressed Artifacts, Master as origin.** ([ADR-0012](./adr/0012-content-addressed-artifacts.md))
-- **WebSocket control channel + HTTP artifacts, not gRPC.** ([ADR-0007](./adr/0007-websocket-http-transport.md))
-- **TLS via self-signed cert fingerprint pinned in the Invite Token.** ([ADR-0011](./adr/0011-tls-fingerprint-in-token.md))
-- **Models must fit on a single Worker's GPU** in v0.1–v0.5. ([ADR-0004](./adr/0004-big-models-out-of-scope.md))
+- Closed-membership Rooms via signed Invite Tokens ([0002](./adr/0002-closed-membership-rooms.md)); admin tokens for submission ([0014](./adr/0014-admin-tokens-for-submission.md)).
+- Master on the data plane; Workers outbound-only ([0003](./adr/0003-master-on-data-plane.md)); flat single Master ([0001](./adr/0001-flat-master-not-hierarchical.md)).
+- Our own orchestration, not Ray ([0005](./adr/0005-roll-our-own-orchestration.md)); two primitives, Map and Search ([0009](./adr/0009-map-search-primitives.md)).
+- Black-box Container Contract ([0006](./adr/0006-black-box-container-contract.md)); smart-pull scheduling ([0008](./adr/0008-smart-pull-scheduling.md)); Optuna behind a Sampler interface ([0010](./adr/0010-wrap-optuna.md)).
+- WebSocket control + HTTP artifacts ([0007](./adr/0007-websocket-http-transport.md)); TLS by fingerprint pinning ([0011](./adr/0011-tls-fingerprint-in-token.md)); content-addressed artifacts ([0012](./adr/0012-content-addressed-artifacts.md)); Master URL separate from the token ([0015](./adr/0015-master-url-separate-from-token.md)).
+- Models must fit one GPU ([0004](./adr/0004-big-models-out-of-scope.md)); CLI and observability split ([0013](./adr/0013-cli-design-and-observability.md)).
+- Benchmark as its own container ([0016](./adr/0016-benchmark-runs-as-a-container.md)); Python toolchain ([0017](./adr/0017-python-toolchain.md)); logging and events ([0018](./adr/0018-logging-and-events.md)); experiment run records ([0019](./adr/0019-experiment-run-records.md)); the Docker image as the verification surface ([0020](./adr/0020-docker-is-the-verification-surface.md)).
 
 ---
 
-## 8. Implementation Tasks (T01–T27)
+## 8. Delivery plan
 
-Each task is self-contained: prerequisites, deliverables, file paths, and acceptance criteria. Phases are dependency-ordered (§0). For execution discipline (branches, commits, PRs, tests, manual phase), see [../CONTRIBUTING.md](../CONTRIBUTING.md).
+The work is split into tasks T01–T33 across phases P0–P5. **The task index, dependency graph, Definition of Done and stubs are in [plan.md](./plan.md); the full specification of each task is its card in [tasks/](./tasks/README.md).** This PRD no longer holds per-task detail (moved 2026-11-10; the earlier 2–4-line entries left too much to be settled mid-PR).
 
----
-
-### P0 — Scaffolding
-
-#### T01 — Repo skeleton + packaging + image
-**Prereqs:** none.
-**Deliverables:** `pyproject.toml` (uv, Python 3.13), `src/compute4me/` package per §5, single `Dockerfile` with `serve` and `worker` entrypoints, `Makefile` (`dev`, `test`, `image`, `e2e`). Empty module files with docstrings.
-**Acceptance:** `uv sync` resolves; `docker build` produces an image; `compute4me --help` lists the commands from [architecture/wire-protocol.md §4.1](./architecture/wire-protocol.md) (`serve`, `worker`, `token`, `status`, `progress`, `logs`, `events`, `fetch`, `jobs`, `cancel`, plus `version`/`help`).
-
-#### T02 — Core types (`types.py`)
-**Prereqs:** T01.
-**Deliverables:** Pydantic models per [architecture/data-model.md](./architecture/data-model.md) — `CapabilityProfile`/`GpuInfo`, `SearchJobSpec`/`MapJobSpec`/`ShardStrategy`, `TokenClaims`, internal `Task`, `TaskResult`, `TaskError`, `ShardDescriptor`.
-**Acceptance:** models round-trip JSON; invalid payloads raise `ValidationError`; `n_shards>0` enforced for non-`whole` strategies.
-
-#### T03 — Master state store (`master/state.py`)
-**Prereqs:** T02.
-**Deliverables:** SQLite schema per [architecture/data-model.md §Master State Store](./architecture/data-model.md) created on first `serve`; save/load for rooms, tokens, workers, jobs, tasks, artifacts, results; `load_open_jobs()` / `load_pending_tasks()` for restart recovery.
-**Acceptance:** schema applies on empty DB; a Job + its Tasks survive a process restart; indices present.
-
-#### T04 — Wire message models (`proto/messages.py`)
-**Prereqs:** T02.
-**Deliverables:** Pydantic models for every WS message in [architecture/wire-protocol.md §2](./architecture/wire-protocol.md), discriminated union on `type`.
-**Acceptance:** each message serializes/deserializes; unknown `type` rejected; `join` carries a full `CapabilityProfile`.
+| Phase | Delivers | Tracer bullet |
+|---|---|---|
+| P0 Scaffolding ✅ | Repo, types, state store, wire models | `docker build`; `compute4me --help` |
+| P1 Control-plane bootstrap | Tokens, TLS, transport, join, profiling, tooling, logging, benchmark container, runnable CLI, bandwidth | A Worker container joins a Master container in CI |
+| P2 Job execution core | Artifacts, shards, samplers, decomposer, cost model, scheduler, runner | A 4-trial Search completes end to end |
+| P3 Reliability | Failure handling, quarantine, recovery, cancellation | Kill a Worker and the Master mid-Job; the Job completes |
+| P4 Interfaces & observability | Full CLI, Python API + SDK, observability commands, host check | The §13 operator loop from a clean machine |
+| P5 Eval & research harness | Run records, `spacesight` images, 3-arm experiment, scale simulation | The makespan + operator-effort table from registered runs |
 
 ---
 
-### P1 — Control-plane bootstrap *(tracer bullet: a Worker joins; the Master records its profile)*
+## 9. Eval / research runbook
 
-#### T05 — Token service (`master/tokens.py`)
-**Prereqs:** T02, T03.
-**Deliverables:** `issue/verify/revoke/admit/release` per [architecture/modules.md §Token service](./architecture/modules.md); JWT sign/verify with a Master-held key; in-memory revocation set + per-`jti` live worker counter; metadata persisted via T03.
-**Acceptance:** issue→verify round-trips; expired token rejected; revoked `jti` rejected; `admit` allows up to `max_workers` then refuses; `release` frees a slot; `master_cert_fp` present in claims.
+v0.1 is the substrate for the first research artifact: a measurement of **DL-aware, automatic-capability-discovery, heterogeneity-native scheduling** ([roadmap.md research thread 1](./roadmap.md#research-threads-papers-not-just-features)).
 
-#### T06 — Self-signed TLS + fingerprint (`master/server.py`, `worker/daemon.py`)
-**Prereqs:** T05.
-**Deliverables:** Master generates/persists a self-signed cert; its sha256 fingerprint is embedded in issued tokens; Worker pins the fingerprint from its token and refuses a mismatched cert.
-**Acceptance:** Worker connects over WSS when fingerprint matches; connection refused on mismatch; no CA / domain required. ([ADR-0011](./adr/0011-tls-fingerprint-in-token.md))
-
-#### T07 — WebSocket transport server (`master/server.py`)
-**Prereqs:** T04, T06.
-**Deliverables:** WS server accepting one persistent connection per Worker; dispatches inbound messages; can push `task_assign`/`task_cancel`/`bandwidth_probe`; per-Worker send queue.
-**Acceptance:** a test client opens a connection, exchanges a ping/heartbeat, and the Master tracks it as connected; closing the socket marks the Worker disconnected and calls `release`.
-
-#### T08 — Worker daemon + join handshake (`worker/daemon.py`)
-**Prereqs:** T07.
-**Deliverables:** outbound WS client; on start, builds profile (T09), sends `join`, handles `join_ack`/`join_reject`; heartbeat loop every 10s; reconnect-with-backoff.
-**Acceptance:** Worker joins a running Master and receives `worker_id`; bad token → `join_reject` with reason; Worker reconnects after a transient drop.
-
-#### T09 — Capability profiler + micro-benchmark (`worker/profiler.py`)
-**Prereqs:** T02.
-**Deliverables:** `profile()` gathering GPU (nvidia-smi or `cpu`), CPU/RAM/disk (psutil/shutil), `datasets_cached`; `run_micro_benchmark()` (fixed 30s ResNet18 fwd/bwd → samples/sec); persistent `host_id`.
-**Acceptance:** on a GPU host reports real `gpu.model` + VRAM; on CPU-only reports `model='cpu'`; micro-benchmark returns a positive `throughput_ref`; `host_id` stable across restarts; testable with injected fake probes.
-
-#### T10 — Bandwidth/RTT probe + periodic profile refresh
-**Prereqs:** T07, T09.
-**Deliverables:** Master-initiated `bandwidth_probe`; Worker sends `profile_update` every ~10 min; state store updated.
-**Acceptance:** profile shows non-zero `bandwidth_to_master_mbps`/`rtt_to_master_ms`; a refresh after freeing VRAM updates `vram_free_mb` in the Master's view.
+- **Centrepiece, the 3-arm comparison (T26):** the same Search workload on the same heterogeneous fleet under (a) Ray's default scheduler, (b) Ray with manually labelled custom resources, (c) Compute4Me. Report **makespan** and **operator effort** (lines of manual hardware configuration). The operator-effort column is the differentiator: Compute4Me discovers capabilities itself.
+- **Scale simulation (T27):** fleets of 10/50/200 Workers with controllable heterogeneity skew and churn, to show the advantage grows with skew and scale.
+- **Real workload (T25):** `spacesight` Search and Map Jobs.
+- **Baselines:** round-robin, random, greedy pull, Ray default, Ray with manual labels.
+- **Records:** every eval run is an auto-named run folder with config, git state, environment, a **fleet snapshot** and logs; reported numbers come only from runs listed in `results/registry.yaml`, and dirty-tree runs can't be registered ([ADR-0019](./adr/0019-experiment-run-records.md), T32).
 
 ---
 
-### P2 — Job execution core *(tracer bullet: a tiny Search Job runs E2E on a fake Worker)*
+## 10. Testing strategy
 
-#### T11 — Artifact store, Master origin (`master/artifacts.py`)
-**Prereqs:** T03.
-**Deliverables:** `put(bytes|url)→hash`, `get`, content-addressed storage on disk; HTTP `GET /artifacts/{hash}` (Range) + `POST /artifacts`; name/version alias resolution.
-**Acceptance:** same bytes → same hash; upload then GET returns identical bytes; URL ingest fetches and hashes; alias `name/version` resolves to the hash.
+A good test exercises **external behaviour, not implementation detail**: given inputs to a module's interface, assert on outputs and observable effects. Conventions (layout, markers, fakes) are in [CONTRIBUTING.md](../CONTRIBUTING.md#tests); where each check runs is in [test-map.md](./architecture/test-map.md).
 
-#### T12 — Shard serving + Worker cache (`master/artifacts.py`, `worker/cache.py`)
-**Prereqs:** T11.
-**Deliverables:** `serve_shard` for `index-range`/`file-list`; Worker `ensure_cached(hash, shard)` fetch+verify, skip-if-present; `datasets_cached` reflects the local cache.
-**Acceptance:** a Worker fetches only its shard (asserted bytes transferred ≈ 1/N); a second Task on cached data does zero transfer; hash mismatch → re-fetch + error.
-
-#### T13 — Sampler interface + Optuna + raw list (`master/samplers/`)
-**Prereqs:** T02.
-**Deliverables:** `Sampler` protocol; `OptunaSampler` (ask/tell, TPE); `RawListSampler`.
-**Acceptance:** with a seeded Optuna sampler, `ask()` is deterministic; `tell()` influences subsequent asks; raw-list yields exactly the provided configs in order. ([ADR-0010](./adr/0010-wrap-optuna.md))
-
-#### T14 — Job decomposer (`master/decomposer.py`)
-**Prereqs:** T13, T02.
-**Deliverables:** `decompose(SearchJobSpec)` → N config-Tasks via Sampler; `decompose(MapJobSpec)` → shard-Tasks per ShardStrategy; each Task carries `requires` (min_vram, est_work_units).
-**Acceptance:** seeded Search emits the expected set of config-Tasks; Map emits exactly `n_shards` Tasks with non-overlapping, exhaustive shard descriptors; `whole` emits 1 Task.
-
-#### T15 — Cost model (`master/cost_model.py`)
-**Prereqs:** T02.
-**Deliverables:** `estimate(task, worker)` = `work_units / rate(worker)`; `feasible(task, worker)` VRAM/GPU filter. Pure functions.
-**Acceptance:** for two Workers differing only in `throughput_ref`, the faster gets the lower estimate in proportion; a Task needing more VRAM than a Worker has is `feasible=False`. Estimates within ~2× on the eval workload (calibration deferred to v0.2).
-
-#### T16 — Smart-pull scheduler (`master/scheduler.py`)
-**Prereqs:** T14, T15.
-**Deliverables:** pending-Task priority queue; `next_task_for(worker)` returns best-fit eligible Task (feasibility filter → cached-input locality preference → fast-Worker-gets-biggest); one Job at a time per Room, FIFO. ([ADR-0008](./adr/0008-smart-pull-scheduling.md))
-**Acceptance (no network):** given fixed Tasks + profiles — fast Worker is assigned the biggest pending Task; VRAM-infeasible Tasks are never assigned; a Worker caching a Task's inputs is preferred for it; queue empties exactly once.
-
-#### T17 — Container Contract runner + dispatch (`worker/runner.py`, wire into `server.py`/`daemon.py`)
-**Prereqs:** T08, T12, T16.
-**Deliverables:** Master `task_assign` → Worker `runner.run()`: `docker run` user image with `C4M_*` env per [architecture/wire-protocol.md §1](./architecture/wire-protocol.md), plus any `env={...}` from the Job spec forwarded into the user container; mount inputs/outputs, tail `progress.jsonl`, read `metrics.json`, `POST /tasks/{id}/outputs`, send `task_result`. Reject `C4M_*` overrides from the Job's `env` with a warning. Sample `examples/resnet18_hpo/` image.
-**Acceptance:** **E2E smoke test** — Master + 2 **fake Workers** + a tiny Search Job (4 trials over the sample image): all trials complete, `task_result`s validated, results retrievable. Job spec `env` values land in the user container; `C4M_*` overrides are stripped. (`tests/integration/test_e2e_search.py`)
+| Layer | What | Where it runs |
+|---|---|---|
+| Unit | Pure modules: cost model, scheduler, decomposer, samplers, tokens, failure controller, artifact store, profiler with fake probes | CI, every PR |
+| Integration | Real Master and Worker objects over localhost WSS/HTTP, with fake runners (`tests/fakes/`) | CI, every PR |
+| Image | Build, `--help`, `version`; compose join smoke (a Master container and a Worker container) | CI, every PR ([ADR-0020](./adr/0020-docker-is-the-verification-surface.md)) |
+| Docker / GPU | Real containers, bench image, real-Docker E2E (`requires_docker`, `requires_gpu`) | Locally, before the PR is marked ready |
+| Fleet | Real NAT'd contributor, real GPUs, real VPS | By hand, tracked on the "Needs the real fleet" issue |
 
 ---
 
-### P3 — Reliability
+## 11. Non-functional requirements
 
-#### T18 — Heartbeat + failure controller (`master/failure.py`)
-**Prereqs:** T07, T16.
-**Deliverables:** heartbeat tracking; `tick()` detects 30s timeout → mark Worker `down`, re-queue its Task; retry policy (≤3 attempts); OOM classification → promote retry to a Worker with ≥2× VRAM; permanent-fail surfaced without blocking the Job.
-**Acceptance:** simulated heartbeat timeout re-queues the in-flight Task; a 3×-failing Task ends `failed` while siblings continue; an OOM failure's retry targets a higher-VRAM Worker when available.
-
-#### T19 — Quarantine + result validation
-**Prereqs:** T18.
-**Deliverables:** Worker failing ≥3 Tasks in 10 min → quarantined 5 min → auto-restored; `validate_result` (finite Search metric / Map output schema) — invalid counts as a Task failure.
-**Acceptance:** a flaky fake Worker enters and exits quarantine on schedule; a `NaN` metric is rejected and the Task retried; a missing declared output fails validation.
-
-#### T20 — Master persistence + restart recovery
-**Prereqs:** T03, T16.
-**Deliverables:** all scheduling state durable; on restart, `load_open_jobs()` resumes the queue; Workers re-heartbeat and re-attach.
-**Acceptance:** kill the Master mid-Job, restart it → the Job resumes (remaining Tasks scheduled), already-collected results preserved, no duplicate top-K beyond idempotent re-runs.
-
-#### T21 — Job cancellation
-**Prereqs:** T17, T20.
-**Deliverables:** `compute4me cancel JOB_ID` → `task_cancel` to Workers running that Job; SIGTERM(30s)→SIGKILL on user containers; partial Task results discarded; collected Task results returned. `cancel` prompts by default (`--yes` skips); see [wire-protocol.md §4.7](./architecture/wire-protocol.md).
-**Acceptance:** cancel mid-sweep stops running containers within ~30s; `fetch` still returns the trials that had completed.
+| ID | Requirement | Checked by |
+|---|---|---|
+| NFR-01 **Outbound-only Workers** | A Worker needs no inbound port, SSH or firewall change; only outbound TCP to the Master's port. | Compose smoke; fleet check |
+| NFR-02 **One-command join** | Joining is one `docker run` with `C4M_MASTER` and `C4M_TOKEN` (plus the documented volume and socket mounts). | README walkthrough, T31 |
+| NFR-03 **Lean Worker image** | The Worker image contains no ML framework; ML code runs only in user and bench containers. | Import-hygiene test, image size noted in CHANGELOG |
+| NFR-04 **Reproducible builds** | Python 3.13 and every dependency pinned through `uv.lock`; one version per dev tool. | [ADR-0017](./adr/0017-python-toolchain.md), CI |
+| NFR-05 **Secrets** | Tokens, signing keys and Job `env` values never appear in logs, events, git or error messages; key files are mode `0600`. | Redaction tests (T29), gitleaks (T28) |
+| NFR-06 **Observability** | Every state transition is an event; every process logs to stderr in human or JSON form; nothing fails silently. | T29 tests; review checklist |
+| NFR-07 **Determinism** | Samplers, decomposition and scheduling decisions are deterministic under a fixed seed and inputs. | Unit tests (T13, T14, T16); T27 |
+| NFR-08 **Failure detection** | A dead Worker is detected within ~30 s (10 s heartbeat, 30 s timeout). | T18 tests |
+| NFR-09 **Durability** | Master state survives a restart; a Job resumes. | T20 tests |
+| NFR-10 **Verified in the image** | Every task is verified against the built image; CI builds and runs it on every PR. | [ADR-0020](./adr/0020-docker-is-the-verification-surface.md) |
+| NFR-11 **Traceable results** | Every reported number traces to a clean run folder listed in the registry. | [ADR-0019](./adr/0019-experiment-run-records.md), T32 |
 
 ---
 
-### P4 — Interfaces & observability
-
-#### T22 — Operator CLI (`cli.py`)
-**Prereqs:** T05, T11, T20.
-**Deliverables:** the full CLI surface per [architecture/wire-protocol.md §4](./architecture/wire-protocol.md) and [ADR-0013](./adr/0013-cli-design-and-observability.md): mode commands (`serve`, `worker`), token group (`token issue/revoke/list` with `--admin` flag per [ADR-0014](./adr/0014-admin-tokens-for-submission.md)), five-command observability (`status` with `--watch`, `progress`, `logs`, `events`, `fetch`), Job lifecycle (`jobs`, `cancel`), and `version`/`help`. Rendering modes (default unicode, `--ascii`, `--slop`), exit-code policy ([error-handling.md](./architecture/error-handling.md)), env-var precedence (`C4M_*`), foreground/`-d` for daemon modes with non-TTY auto-switch to JSON-lines.
-**Acceptance:** full operator loop from a clean machine: `serve` → `token issue --admin` → (worker joins) → submit → `status --watch` shows the Worker + live throughput → `fetch --out` downloads top-K. `--ascii` and `--slop` render correctly. `cancel` prompts unless `--yes`. Stdout-not-a-TTY emits JSON-lines.
-
-#### T23 — Python submission API + SDK (`client/api.py`, `sdk/__init__.py`, `errors.py`)
-**Prereqs:** T14, T17.
-**Deliverables:** `Client.from_token/from_env/__init__` + `submit_search/submit_map` + `JobHandle` (`wait/status/progress/results/fetch/cancel`) + `list_jobs/get_job/fleet` per [architecture/wire-protocol.md §5](./architecture/wire-protocol.md). Submission requires an admin token ([ADR-0014](./adr/0014-admin-tokens-for-submission.md)). `env={...}` parameter forwards env vars to user containers (W&B / MLflow / HF). Search-space DSL re-exports (`loguniform`, `uniform`, `categorical`). Exception hierarchy (`Compute4MeError`/`ConnectionError`/`AuthError`/`SubmissionError`/`JobFailedError`/`TaskFailedError`/`CancelledError`) per [error-handling.md](./architecture/error-handling.md). Context-manager auto-cancel. `c4m.config/input_dir/output_dir/report/progress` sugar over the file contract.
-**Acceptance:** a Search Job submitted purely via Python completes and downloads; the sample image runs identically with and without the SDK; running the image locally with the four `C4M_*` env vars reproduces a Worker run. A non-admin token raises `AuthError` on submit. `env={"WANDB_API_KEY": ...}` reaches the trial container. `with c.submit_search(...) as job: raise` triggers `job.cancel()`.
-
-#### T24 — Observability commands + live progress display
-**Prereqs:** T10, T17.
-**Deliverables:** the five observability commands' implementations: `status` (Workers + Jobs snapshot; `--watch` live via `rich.live.Live`, 1s default, `--interval Ns` override; explicit numerals beside progress bars), `progress JOB_ID` (live `progress.jsonl` stream with per-Worker color and `wandb_url` surfacing), `logs <target>` (Master/Worker/Task/Job streams; `--tail`, `--since`, `-f`), `events` (logfmt structured stream; `--since`, `--type`, `--json`, `-f`), and the foreground display for `serve`/`worker` (banner + event stream + sticky status bar).
-**Acceptance:** `status` reflects join/leave/quarantine within a heartbeat interval; `status --watch` refreshes in place without flicker; a running trial's `progress.jsonl` lines appear in `progress JOB_ID` with color per Worker; `events --type task_failed -f` streams only failure events; `logs task t_xxx -f` streams the user container's stdout/stderr.
-
----
-
-### P5 — Eval & research harness
-
-#### T25 — `spacesight` workload images
-**Prereqs:** T17, T23.
-**Deliverables:** containerized InceptionResNet exoplanet model honoring the Container Contract — a `train` image (Search/HPO) and an `infer` image (Map); Kepler light-curve dataset ingested as an Artifact.
-**Acceptance:** a 32-trial Optuna sweep and a file-list Map inference both complete on the real fleet and produce sane metrics/outputs.
-
-#### T26 — 3-arm scheduler experiment harness
-**Prereqs:** T22, T25.
-**Deliverables:** a runbook + scripts comparing the same HPO workload on the same heterogeneous fleet under **(a)** Ray default scheduler, **(b)** Ray with manually-labeled custom resources, **(c)** Compute4Me — reporting **makespan** and **operator effort** (lines of manual hardware config). Captures fleet profiles for reproducibility.
-**Acceptance:** one command runs all three arms and emits a results table (makespan per arm, config-LoC per arm); numbers reproducible across two runs within noise.
-
-#### T27 — Scale simulation
-**Prereqs:** T16, T26.
-**Deliverables:** a simulator that replays the scheduler against synthetic fleets of 10/50/200 Workers with controllable heterogeneity skew and churn; shows the advantage over round-robin/Ray-style grows with skew and scale.
-**Acceptance:** produces makespan-vs-skew and makespan-vs-scale curves; the smart-pull arm dominates round-robin as skew increases; deterministic under a fixed seed.
-
----
-
-## 9. Eval / Research Runbook
-
-v0.1 is the substrate for the first research artifact: a measurement of **DL-aware, automatic-capability-discovery, heterogeneity-native scheduling** ([roadmap.md research thread #1](./roadmap.md)).
-
-- **Centerpiece — 3-arm comparison** (T26): the same HPO workload on the same heterogeneous fleet under (a) Ray default scheduler, (b) Ray with manually-labeled custom resources, (c) Compute4Me. Report both **makespan** and **operator effort** (lines of manual hardware config). The operator-effort column is the differentiator vs Ray — Compute4Me discovers capabilities automatically.
-- **Scale simulation** (T27): extend to fleets of 10/50/200 Workers to show the advantage grows with skew and scale.
-- **Real workload** (T25): the `spacesight` exoplanet-detection InceptionResNet — HPO sweeps and batch inference over Kepler light curves.
-- **Baselines:** round-robin, random, Ray-default, Ray-with-manual-labels.
-
----
-
-## 10. Testing Strategy
-
-A good test exercises **external behavior, not implementation detail** — given inputs to a module's interface, assert on its outputs/observable effects, so the test survives refactors. Full conventions (layout, markers, CI selection) live in [../CONTRIBUTING.md](../CONTRIBUTING.md).
-
-Highest-value modules to test in isolation (all designed to be pure or easily faked):
-
-- **Cost model** (T15) — pure function; assert ordering/ratios of estimates across heterogeneous Workers.
-- **Scheduler** (T16) — given fixed pending Tasks + Capability Profiles, assert best-fit decisions. No network.
-- **Job decomposer** (T14) — seeded sampler → assert the emitted Task configs; Map → assert shard boundaries are exhaustive and non-overlapping.
-- **Token service** (T05) — issue→verify round-trips, expiry, revocation, `max_workers` enforcement.
-- **Failure controller** (T18/T19) — simulate heartbeat timeouts and Task failures; assert state transitions.
-- **Artifact store** (T11/T12) — content-addressing, cache-hit skipping, hash-verification failure.
-
-**Integration smoke test** (T17): Master + 2 fake Workers running a tiny Search Job end-to-end. Greenfield repo — these tests establish the patterns. **Fakes** in `tests/fakes/`: `FakeWorker`, fake hw probes, fake container runner — so the E2E test runs on GitHub-hosted CI without GPU or Docker.
-
----
-
-## 11. Risks & Mitigations
+## 12. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Firewall/proxy mangles WSS or HTTP/2 | Workers can't join | WebSocket over 443-style WSS, not gRPC; outbound-only; HTTP fallback for artifacts. ([ADR-0007](./adr/0007-websocket-http-transport.md)) |
-| Master uplink saturates as fleet grows | Slow artifact distribution | v0.1 targets small fleets; content-addressed cache means repeat data is free; P2P artifact distribution is v0.5. |
-| Cost-model estimate badly wrong (>2×) | Suboptimal placement, longer makespan | Coarse model is *enough to beat round-robin*; smart-pull self-corrects (free Workers pull more); calibration is v0.2. |
-| Flaky volunteer (Ali closes laptop) | Task lost | 30s heartbeat timeout → re-queue; ≤3 retries; quarantine. Mid-Task checkpointing deferred to v0.3. |
-| Buggy Worker returns garbage metrics | Corrupt sweep results | `validate_result` (finite/schema); not adversarial defense (Byzantine is out of scope). |
-| Token leaked | Unwanted Worker joins | TTL (default 30d), `max_workers` cap, in-memory revocation. Closed-membership only. ([ADR-0002](./adr/0002-closed-membership-rooms.md)) |
-| Master crash mid-Job | Lost run | SQLite persistence + restart recovery (T20). |
-| Model doesn't fit one GPU | Out of v0.1 scope | Explicitly excluded ([ADR-0004](./adr/0004-big-models-out-of-scope.md)); pipeline parallelism is v0.6/v1.0. |
+| A firewall or proxy mangles WSS or HTTP/2 | Workers can't join | WebSocket over TLS on one port, not gRPC ([ADR-0007](./adr/0007-websocket-http-transport.md)); port decision in T11 |
+| User containers can't see their inputs (Docker-outside-of-Docker paths) | Every Task fails or runs on empty input | Decided and tested in T17 before any real Job |
+| The bench image is too big for slow contributor links | Slow first join | Pull once per host; join never waits on it ([ADR-0016](./adr/0016-benchmark-runs-as-a-container.md)) |
+| The Master's uplink saturates as the fleet grows | Slow artifact distribution | Small fleets in v0.1; content-addressed caching; P2P in v0.5 |
+| The cost model is badly wrong (> 2×) | Worse placement | Pull self-corrects; calibration in v0.2; error recorded from T26 data |
+| A flaky contributor drops mid-Task | Task lost | 30 s detection, ≤ 3 retries, quarantine; mid-Task checkpointing in v0.3 |
+| A buggy Worker returns garbage | Corrupt sweep | `validate_result` (finite metric, declared outputs) |
+| A token or signing key leaks (the repo is public) | Unwanted Workers or submissions | TTL, `max_workers`, revocation; redaction; gitleaks; key files `0600` |
+| SQLite contention between `serve` and `docker exec … token issue` | "database is locked" | WAL + busy timeout (T31) |
+| Master crash mid-Job | Lost run | SQLite persistence and recovery (T20) |
+| A model doesn't fit one GPU | Out of scope | Excluded ([ADR-0004](./adr/0004-big-models-out-of-scope.md)) |
+| Tooling drift (Python, tool versions, hooks) | "Works locally, fails in CI" detours | [ADR-0017](./adr/0017-python-toolchain.md), T28 |
 
 ---
 
-## 12. Acceptance Criteria (v0.1 "done")
+## 13. Acceptance criteria (v0.1 "done")
 
-v0.1 is complete when:
+v0.1 is complete when every criterion holds, each shown on the real fleet unless marked *(CI)*.
 
-1. `docker run compute4me serve --room R` brings up a Master; `compute4me token issue` prints a usable token.
-2. `docker run -e C4M_MASTER=... -e C4M_TOKEN=... compute4me worker` joins from behind a NAT with **no inbound ports / SSH / firewall config**; the Master shows the Worker's Capability Profile.
-3. A single `max_workers=4` token admits exactly four Workers and refuses the fifth.
-4. A Search Job (Optuna and raw-list) and a Map Job (whole / index-range / file-list) each run end-to-end across ≥2 heterogeneous Workers and return collected results.
-5. The Scheduler demonstrably gives the faster Worker the heavier Tasks and never places a Task on a Worker without enough VRAM (asserted by the scheduler unit tests + observed on the real fleet).
-6. A Worker that drops mid-Task is detected within ~30s and its Task re-queued; a 3×-failing Task is surfaced without blocking the Job; a flaky Worker is quarantined then restored.
-7. Killing and restarting the Master resumes the running Job from persisted state.
-8. `compute4me cancel` stops a running Job and still returns results collected so far.
-9. The user model image runs unmodified (no `import compute4me`) and reproduces locally with the four `C4M_*` env vars.
-10. The 3-arm scheduler experiment (T26) runs and emits a makespan + operator-effort table.
-
----
-
-## 13. Out of Scope (v0.1)
-
-Deferred to later milestones (full registry in [roadmap.md](./roadmap.md)):
-
-- **v0.2 — Scheduler maturity:** multi-Job concurrency + fairness, real-time-throughput rebalancing, dynamic re-sharding, calibrated cost model.
-- **v0.3 — Fabric ergonomics & robustness:** mid-Task checkpointing, B2 live-RPC sidecar, streaming partial artifact transfer, external result sinks, disk-cache GC, custom sharders, Master-mediated image distribution, additional Samplers.
-- **v0.4 — Distributed data-parallel training:** parameter-server aggregation, gradient compression, capability-weighted aggregation, async-for-stragglers, gradient-norm sanity checks.
-- **v0.5 — WAN:** local SGD / DiLoCo, async-with-staleness, direct worker-to-worker links, P2P artifact distribution.
-- **v0.6 — Big-model inference:** the Pipeline Job primitive.
-- **v1.0 — Big-model training:** master-orchestrated pipeline parallelism (the marquee research contribution).
-- **Never in this design (separate mode if ever):** open/public Rooms, Byzantine-robust aggregation, cryptographic privacy, hierarchical multi-tier aggregation, Master HA.
+| # | Criterion | Delivered by |
+|---|---|---|
+| 1 | `docker run … serve --room R` brings up a Master; `compute4me token issue` prints a usable token. *(CI: compose smoke)* | T31, T22 |
+| 2 | `docker run -e C4M_MASTER=… -e C4M_TOKEN=… … worker` joins from behind a NAT with no inbound ports, SSH or firewall changes; the Master shows the Worker's Capability Profile. | T31, T10, T33 |
+| 3 | A `max_workers=4` token admits exactly four Workers and refuses the fifth. | T05, T31 |
+| 4 | A Search Job (Optuna and raw list) and a Map Job (whole, index-range, file-list) each run end to end across ≥ 2 heterogeneous Workers and return collected results. | T11–T17, T23 |
+| 5 | The Scheduler gives the faster Worker the heavier Tasks and never places a Task on a Worker without enough VRAM (unit tests plus the real fleet). | T15, T16 |
+| 6 | A Worker that drops mid-Task is detected within ~30 s and its Task re-queued; a 3×-failing Task is surfaced without blocking the Job; a flaky Worker is quarantined and restored. | T18, T19 |
+| 7 | Killing and restarting the Master resumes the running Job from persisted state. | T20 |
+| 8 | `compute4me cancel` stops a running Job and still returns the results collected so far. | T21 |
+| 9 | The user model image runs unmodified (no `import compute4me`) and reproduces locally with the four `C4M_*` env vars. | T17, T23 |
+| 10 | The 3-arm scheduler experiment runs and emits a makespan + operator-effort table from registered runs. | T26 (with T32) |
 
 ---
 
-## 14. Further Notes
+## 14. Out of scope (v0.1)
 
-- **Eval / research framing.** v0.1 is the substrate for the first research artifact: a measurement of DL-aware, automatic-capability-discovery, heterogeneity-native scheduling. The centerpiece is the 3-arm comparison (§9) reporting makespan and operator effort, plus a simulation arm at 10/50/200 Workers.
-- **Real workload.** The exoplanet-detection InceptionResNet model (the operator's `spacesight` work) is the concrete eval workload — HPO sweeps and batch inference over Kepler light curves.
-- **Audience.** Compute4Me targets researchers with lab GPUs + friends' consumer GPUs — the majority of ML work that fits on one card. It deliberately does not target the train-a-70B-model audience, who have cloud/supercomputer options.
+Deferred (full registry in [roadmap.md](./roadmap.md)):
+
+- **v0.2, scheduler maturity:** multi-Job concurrency and fairness, real-time-throughput rebalancing, dynamic re-sharding, a calibrated cost model.
+- **v0.3, ergonomics and robustness:** mid-Task checkpointing, the B2 live-RPC sidecar, streaming partial transfer, external result sinks, cache GC, custom sharders, Master-mediated image distribution, more Samplers, getting-started docs.
+- **v0.4, distributed data-parallel training.** **v0.5, WAN.** **v0.6, big-model inference.** **v1.0, big-model training.**
+- **Never in this design** (a separate mode if ever): open/public Rooms, Byzantine-robust aggregation, cryptographic privacy, hierarchical aggregation, Master HA.
 
 ---
 
-*End of PRD (v0.1).*
+## 15. Open items
+
+Decided later by the named task; options and recommendations are in each card's **Decide first** section. The current list is maintained in [plan.md §Open items](./plan.md#open-items).
+
+---
+
+## 16. Document map
+
+| Doc | Purpose |
+|---|---|
+| [plan.md](./plan.md) | Phases, task index, dependency graph, Definition of Done, stubs |
+| [tasks/](./tasks/README.md) | Full task cards |
+| [context.md](./context.md) | Canonical glossary |
+| [architecture/](./architecture/README.md) | Durable structure: overview, data, modules, wire, errors, deployment, operations, test map |
+| [adr/](./adr/README.md) | Architecture decisions |
+| [roadmap.md](./roadmap.md) | What comes after v0.1 |
+| [background/challenges-faced.md](./background/challenges-faced.md) | Real problems hit and how they were solved |
+| [research/](./research/README.md) | Related work and positioning |
+| [style-guide.md](./style-guide.md) | Code and docs conventions |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | How work is done: branches, PRs, tests, Docker verification |
+| [../CLAUDE.md](../CLAUDE.md) | Short guide for AI coding assistants |

@@ -19,6 +19,27 @@ See [ADR-0006](../adr/0006-black-box-container-contract.md). The user's model co
 | `C4M_OUTPUT_DIR` | Writable dir; the container writes `metrics.json` (+ result Artifacts) here. |
 | `C4M_TASK_ID` | Opaque Task identifier (for the container's own logging). |
 
+```mermaid
+flowchart LR
+    CFG["C4M_CONFIG<br/>JSON file of this Task's args"]
+    INP["C4M_INPUT_DIR, read-only<br/>input Artifacts or the shard"]
+    TID["C4M_TASK_ID"]
+    ENV["Job env {...}<br/>C4M_* keys stripped"]
+    U["User image<br/>any language,<br/>no import compute4me"]
+    MET["C4M_OUTPUT_DIR/metrics.json<br/>required for Search"]
+    PRG["C4M_OUTPUT_DIR/progress.jsonl<br/>optional, tailed live"]
+    RES["C4M_OUTPUT_DIR/…<br/>result Artifacts, declared for Map"]
+    EXIT["exit code<br/>0 = success"]
+    CFG --> U
+    INP --> U
+    TID --> U
+    ENV --> U
+    U --> MET
+    U --> PRG
+    U --> RES
+    U --> EXIT
+```
+
 ### Success / failure semantics
 
 - **Success:** process exit code `0` **and** `C4M_OUTPUT_DIR/metrics.json` present (Search) / declared output present (Map).
@@ -26,7 +47,7 @@ See [ADR-0006](../adr/0006-black-box-container-contract.md). The user's model co
 
 ### Job-supplied environment variables (`env={...}`)
 
-The submitter may attach additional environment variables to the Job spec via the `env: dict[str, str]` field on [`SearchJobSpec`/`MapJobSpec`](./data-model.md#53-job-submission-schemas). The Master forwards them; the Worker's runner sets them on the user container alongside the `C4M_*` variables. Typical use:
+The submitter may attach additional environment variables to the Job spec via the `env: dict[str, str]` field on [`SearchJobSpec`/`MapJobSpec`](./data-model.md#job-submission-schemas). The Master forwards them; the Worker's runner sets them on the user container alongside the `C4M_*` variables. Typical use:
 
 ```python
 job = c.submit_search(
@@ -109,22 +130,99 @@ See [ADR-0007](../adr/0007-websocket-http-transport.md). JSON messages over one 
 | `task_cancel` | `{task_id}` | User cancellation; runner sends SIGTERM(30s) then SIGKILL. |
 | `bandwidth_probe` | `{}` | Master measures throughput/RTT for the profile. |
 
+**Planned additions** (additive, per the versioning rule below): `bandwidth_probe` gains `{probe_id, size_bytes}` and a Worker→Master `probe_ack {probe_id, received_bytes}` is added in T10; `task_log {task_id, stream, lines[]}` (Worker→Master) is added in T17 ([ADR-0018](../adr/0018-logging-and-events.md)). Today (T09) the code implements every message in the two tables above; only `join`, `join_ack`, `join_reject` and `heartbeat` are handled end to end.
+
+### Message models
+
+*As built (T03).* [`proto/messages.py`](../../src/compute4me/proto/messages.py): two discriminated unions keyed on `type`, one per direction.
+
+```mermaid
+classDiagram
+    direction TB
+    class WorkerMessage {
+        <<union on type>>
+    }
+    class Join {
+        token: str
+        profile: CapabilityProfile
+    }
+    class Heartbeat {
+        worker_id: str
+        task_id: str | None
+        throughput_sample: float | None
+    }
+    class TaskProgress {
+        task_id: str
+        fields: JSON
+    }
+    class TaskResultMsg {
+        task_id: str
+        status: succeeded or failed
+        metrics, output_refs, error
+    }
+    class ProfileUpdate {
+        worker_id: str
+        profile: CapabilityProfile
+    }
+    WorkerMessage <|-- Join
+    WorkerMessage <|-- Heartbeat
+    WorkerMessage <|-- TaskProgress
+    WorkerMessage <|-- TaskResultMsg
+    WorkerMessage <|-- ProfileUpdate
+```
+
+```mermaid
+classDiagram
+    direction TB
+    class MasterMessage {
+        <<union on type>>
+    }
+    class JoinAck {
+        worker_id: str
+    }
+    class JoinReject {
+        reason: str
+    }
+    class TaskAssign {
+        task_id: str
+        code_ref: str
+        args: JSON
+        input_refs: list~ArtifactRef~
+        requires: TaskRequires
+    }
+    class TaskCancel {
+        task_id: str
+    }
+    class BandwidthProbe
+    MasterMessage <|-- JoinAck
+    MasterMessage <|-- JoinReject
+    MasterMessage <|-- TaskAssign
+    MasterMessage <|-- TaskCancel
+    MasterMessage <|-- BandwidthProbe
+```
+
+The shared models (`CapabilityProfile`, `ArtifactRef`, `TaskRequires`) are in the [data-model map](./data-model.md#model-map).
+
 ### Connection lifecycle
 
-```
-Worker                                  Master
-─────                                   ──────
-1. open WSS (verify fingerprint)
-2. send `join`
-                                        verify token; admit if capacity
-3. receive `join_ack` (or `join_reject`)
-4. heartbeat every 10s
-5. receive `task_assign` (when free)
-6. fetch inputs (HTTP)
-7. run container; tail progress.jsonl
-8. send `task_progress` per line
-9. send `task_result` on exit
-10. back to step 4 (idle)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as Worker
+    participant M as Master
+    W->>M: open WSS (outbound), pin cert by fingerprint
+    W->>M: join {token, profile}
+    Note over M: verify token, admit if capacity
+    M-->>W: join_ack {worker_id} (or join_reject {reason}, terminal)
+    loop every 10 s
+        W->>M: heartbeat {worker_id, task_id?}
+    end
+    M->>W: task_assign (when the Worker is idle)
+    W->>M: HTTP GET inputs (artifact channel)
+    Note over W: run the user container, tail progress.jsonl
+    W->>M: task_progress (per line), task_log (batched)
+    W->>M: task_result on exit
+    Note over W,M: back to idle, heartbeating
 ```
 
 ### Transport choice rationale
@@ -144,6 +242,29 @@ See [ADR-0012](../adr/0012-content-addressed-artifacts.md). Separate from the co
 | `POST` | `/artifacts` | Ingest (operator CLI upload; multipart body OR `{url}` for external pull). |
 | `POST` | `/tasks/{task_id}/outputs` | Worker uploads result Artifacts; Master content-addresses them. |
 
+### Fetching a shard
+
+*Planned (T11, T12).* Shows the dataset-as-manifest design T12 recommends; it changes if T12 settles differently.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operator or Researcher
+    participant M as Master artifact store
+    participant C as Worker cache
+    Op->>M: POST /artifacts for each file, then the manifest
+    M-->>Op: manifest sha256 (the dataset id), alias name and version
+    Note over M: blobs stored by sha256, written atomically
+    C->>M: GET /artifacts/{manifest}/shard?kind=index-range&start=0&end=500
+    M-->>C: manifest slice (paths, hashes, sizes)
+    loop each blob not already cached
+        C->>M: GET /artifacts/{hash}, Range to resume
+        M-->>C: bytes
+        Note over C: verify sha256, on mismatch discard and re-fetch once
+    end
+    Note over C: build shards/{task_id}/ from hard links
+```
+
 ### Caching
 
 Workers cache fetched artifacts locally by hash. `ensure_cached(hash)` skips re-fetch if the file exists and its hash matches. Cache contents are reported back in the `datasets_cached` field of the Capability Profile, enabling the Scheduler's locality preference.
@@ -160,12 +281,38 @@ Design choices recorded in [ADR-0013](../adr/0013-cli-design-and-observability.m
 
 ### 4.1 Command surface
 
-**Structure:** flat command list with one nested group (`token`) for the only noun with multiple verbs. Eight top-level commands; everyone is scannable in one `--help` screen.
+**Structure:** flat command list with one nested group (`token`) for the only noun with multiple verbs; about ten top-level commands, all on one `--help` screen.
 
+```mermaid
+flowchart LR
+    C["compute4me"]
+    C --> MODE["Modes"]
+    C --> TOKEN["token"]
+    C --> OBS["Observability"]
+    C --> LIFE["Job lifecycle"]
+    C --> UTIL["Utility"]
+    MODE --> serve["serve (T31)"]
+    MODE --> worker["worker (T31)"]
+    TOKEN --> ti["issue (T31)"]
+    TOKEN --> tr["revoke (T22)"]
+    TOKEN --> tl["list (T22)"]
+    OBS --> status["status (T24)"]
+    OBS --> progress["progress (T24)"]
+    OBS --> logs["logs (T24)"]
+    OBS --> events["events (T24)"]
+    OBS --> fetch["fetch (T24)"]
+    LIFE --> jobs["jobs (T22)"]
+    LIFE --> cancel["cancel (T22)"]
+    UTIL --> version["version (built)"]
+    UTIL --> doctor["doctor (T33)"]
 ```
+
+**Implementation status:** `version` works today; `serve`, `token issue` and `worker` (core flags) land in T31; the rest in T22 (`token revoke/list`, `jobs`, `cancel`, rendering modes), T24 (`status`, `progress`, `logs`, `events`, `fetch`) and T33 (`doctor`). Until then the commands exist in `--help` and raise "not implemented".
+
+```text
 # Mode commands (long-running; "be a Master" / "be a Worker")
 compute4me serve     --room ROOM [--data-dir DIR] [--bind HOST:PORT] [-d]
-compute4me worker    --token TOKEN [--name NAME] [--cache-dir DIR]
+compute4me worker    [--master URL] [--token TOKEN] [--name NAME] [--cache-dir DIR]
                      [--max-vram-mb N] [-d]
 
 # Token management (grouped — 3 verbs on the `token` noun)
@@ -272,7 +419,8 @@ Standard env vars:
 | `C4M_ROOM` | Client commands (`status`, `fetch`, etc.) | — |
 | `C4M_MASTER` | Client commands (e.g., `wss://vps:8443`) | — |
 | `C4M_TOKEN` | Client commands | — |
-| `C4M_CERT_FP` | Client commands (usually carried inside the token) | — |
+| `C4M_CERT_FP` | Client commands; optional, because the token already carries `master_cert_fp` | — |
+| `C4M_BENCHMARK` | `worker`: `auto` runs the benchmark container, `skip` skips it ([ADR-0016](../adr/0016-benchmark-runs-as-a-container.md)) | `auto` |
 | `C4M_DATA_DIR` | `serve` | `/data` |
 | `C4M_CACHE_DIR` | `worker` | `/var/cache/c4m` |
 | `C4M_DEBUG` | All commands (`1` enables `--debug`) | `0` |
@@ -345,17 +493,18 @@ Three equivalent construction paths:
 ```python
 from compute4me import Client
 
-# Recommended: token carries master URL + cert fingerprint + auth in one credential
-c = Client.from_token("eyJ...")
-
-# Explicit construction
-c = Client(master="wss://vps:8443", cert_fp="a1b2…f3", token="eyJ...")
-
-# From environment (C4M_MASTER, C4M_CERT_FP, C4M_TOKEN, C4M_ROOM)
+# Recommended: from environment (C4M_MASTER, C4M_TOKEN; C4M_ROOM if the token's Room isn't wanted)
 c = Client.from_env()
+
+# Explicit: the URL is always separate from the token (ADR-0015);
+# the cert fingerprint and Room are read from the token's claims
+c = Client(master="wss://vps:8443", token="eyJ...")
+
+# Token plus URL in one call
+c = Client.from_token("eyJ...", master="wss://vps:8443")
 ```
 
-**Authentication:** submission requires an **admin token** (`compute4me token issue --admin`). The `admin: bool` claim on [`TokenClaims`](./data-model.md#54-invite-token-claims-signed) gates submission, cancellation, and job listing. Worker-only tokens (the default) cannot submit. One token system, two capability bits — recorded in [ADR-0014](../adr/0014-admin-tokens-for-submission.md).
+**Authentication:** submission requires an **admin token** (`compute4me token issue --admin`). The `admin: bool` claim on [`TokenClaims`](./data-model.md#invite-token-claims-signed) gates submission, cancellation, and job listing. Worker-only tokens (the default) cannot submit. One token system, two capability bits — recorded in [ADR-0014](../adr/0014-admin-tokens-for-submission.md).
 
 ### 5.2 Job submission
 
@@ -495,7 +644,7 @@ The line: **anything multi-Job ops or daemon-startup goes through CLI; per-Job s
 
 ## Versioning of the wire protocol
 
-- **Additive messages only.** A Master that knows new message types may receive them from a Worker that doesn't send them (no-op) or send them to a Worker that doesn't understand them (Worker ignores unknown types — Pydantic discriminated union should tolerate this with `extra='ignore'`).
+- **Additive messages only.** New message types and new optional fields may be added. Unknown **fields** are ignored (Pydantic's default `extra='ignore'`). An unknown **type** fails parsing (`parse_worker_message` / `parse_master_message` reject it); the receiver drops that frame, logs a WARNING, and keeps the connection open. A Master must therefore not send a new type to a Worker that predates it; in v0.1 both ship in the same image version.
 - **Required fields in `join`** are stable across all v0.x. New optional fields can be added to `CapabilityProfile`; readers ignore unknowns.
 - **Breaking wire changes are gated by major version bumps** — i.e., not until 1.0 unless an explicit migration is provided.
 

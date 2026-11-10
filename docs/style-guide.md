@@ -77,6 +77,18 @@ Default: **write no comment**. Add one only when removing it would confuse a fut
 - **Custom exception classes for the public API** (see [architecture/error-handling.md](./architecture/error-handling.md)). Internal code can raise built-ins (`ValueError`, `RuntimeError`).
 - **`assert` is for internal invariants only** — never for input validation, since assertions are stripped under `-O`. Use explicit `raise ValueError(...)` for input checks.
 
+### Logging
+
+Decision record: [ADR-0018](./adr/0018-logging-and-events.md).
+
+- **One logger per module:** `log = logging.getLogger(__name__)` at module top. Never `print()` in library code.
+- **Library code never configures logging** (no `basicConfig`, no handlers). Only CLI entry points call `compute4me.log.setup_logging()`.
+- **Levels:** `ERROR` = something ended badly and needs a human (cert-pin mismatch, unrecoverable config). `WARNING` = recovered but suspicious (reconnect, dropped frame, benchmark unavailable). `INFO` = lifecycle milestones (listening, joined, Job submitted). `DEBUG` = per-message and periodic detail (heartbeats, wire dumps).
+- **Structured fields, not string-pasting:** `log.info("worker joined", extra={"worker_id": wid, "gpu": model})`. The JSON formatter emits them as keys.
+- **Never log secrets:** tokens (the redaction filter is a safety net, not a licence), signing keys, Job `env` values. Log a token's `jti` instead.
+- **State transitions are events, not just log lines:** use `EventLog.emit(...)`, which also logs. Heartbeats are never events.
+- **Nothing fails silently:** every `except` that swallows an error logs it (at least `WARNING`) with the exception text.
+
 ### Imports
 
 - `ruff`'s `I` rules handle ordering: stdlib → third-party → local, alphabetized within groups.
@@ -101,7 +113,8 @@ Default to Pydantic. Reach for the other two only when there's a concrete reason
 - **Body:** Arrange / Act / Assert sections separated by blank lines.
 - **One logical assertion per unit test.** Multiple OK in integration tests.
 - **Fixtures over `setUp/tearDown`.** Pytest fixtures only; no `unittest.TestCase`.
-- **Every test declares** `@pytest.mark.task("T<NN>")` + one of `.unit`/`.integration` + any `.requires_*` it needs. See [CONTRIBUTING.md §Tests](../CONTRIBUTING.md#tests).
+- **Every test declares** `@pytest.mark.task("T<NN>")` + one of `.unit`/`.integration` + any `.requires_*` it needs (enforced by `tests/conftest.py` from T28). See [CONTRIBUTING.md §Tests](../CONTRIBUTING.md#tests).
+- **Shared fixtures and fakes** live in `tests/conftest.py` and `tests/fakes/`; don't copy a helper into a second test file, move it there.
 
 ### Async
 
@@ -144,7 +157,7 @@ Default to Pydantic. Reach for the other two only when there's a concrete reason
 | **Numbered list** | Sequential steps OR rankings |
 | **Table** | 3+ columns of structured comparison, or rows sharing the same fields |
 | **Code block** | Anything copy-pastable; always language-tagged |
-| **ASCII diagram** | Architecture, data flow, relationships; preferred over images |
+| **Mermaid diagram** | Architecture, data flow, sequences, state machines, dependency graphs |
 
 If a list item runs over ~2 lines, it should probably be a sub-section with prose.
 
@@ -161,18 +174,36 @@ If a list item runs over ~2 lines, it should probably be a sub-section with pros
 - Output blocks: no tag (`` ``` `` alone) or `text` if rendering matters.
 - **Copy-pasteable:** real file paths, real Room names, no `<placeholder>` in paths unless explicitly marked.
 
-### ASCII diagrams
+### Diagrams
 
-- **Preferred over PNGs.** Diffable, copy-pasteable, no external rendering dependencies.
-- Use Unicode box-drawing (`┌─┐│└─┘├┤┬┴┼`). Fall back to `+-|` only if the environment requires.
-- The big diagram in [architecture/overview.md](./architecture/overview.md) sets the project's canonical style; new diagrams match it.
-- Diagrams that genuinely need color or complex topology → defer to a later phase; don't half-do them in ASCII.
+All diagrams are **Mermaid** blocks inside the Markdown (changed from ASCII on 2026-11-10): diffable, rendered by GitHub, and good at sequences, state machines and dependency graphs. Terminal-output samples (CLI banners, error messages) stay as `text` code blocks; they are not diagrams.
+
+- **Render before committing:** `npx -y @mermaid-js/mermaid-cli@11 -i file.md -o /tmp/out.md -e png`, and look at the PNG.
+- **Pick the right type:**
+
+  | Showing | Mermaid type |
+  |---|---|
+  | Context, components, deployment, package dependencies, decision logic | `flowchart` |
+  | Classes, interfaces, data models, message unions | `classDiagram` |
+  | Database tables and keys | `erDiagram` |
+  | Message exchanges between processes | `sequenceDiagram` |
+  | Lifecycles and connection states | `stateDiagram-v2` |
+
+- **Say what it shows:** an italic line above each diagram: *As built (Txx)* for the code today, *Planned (Txx)* for a card's recommendation, or *Target* / *Concept* for the v0.1 design. A diagram that claims "as built" and disagrees with the code is a bug.
+- **One place per diagram,** in the doc that owns the topic, listed in the [architecture diagram index](./architecture/README.md#diagrams). Link to it; don't copy it.
+- **In `classDiagram`,** write generics as `list~Task~` (Mermaid's generic syntax); `str | None` renders as written.
+- **Avoid known breakages:**
+  - no `;` inside sequence-diagram text (it is a statement separator); use commas;
+  - no edges to or from a whole subgraph;
+  - no floating nodes;
+  - wide graphs (more than ~15 nodes) use `flowchart TB`, not `LR`.
+- **When a diagram tangles,** use fewer boxes (one box listing several items) and put the detail in a table underneath.
 
 ### Cross-references
 
 - **Always relative paths.** `[overview.md](./overview.md)` from inside `docs/architecture/`. Never absolute paths or full URLs to our own GitHub.
 - `[text](./path.md)` Markdown syntax. Bare URLs only in citations (research docs).
-- Anchor links use GitHub's auto-form: lowercase, hyphens replace spaces, special chars dropped. E.g., `## 8. Implementation Tasks (T01–T27)` → `#8-implementation-tasks-t01t27`.
+- Anchor links use GitHub's auto-form: lowercase, hyphens replace spaces, special chars dropped. E.g., `## 9. Eval / research runbook` → `#9-eval--research-runbook` (the `/` is dropped, leaving two hyphens).
 - Link text describes the target's content: `see [Container Contract](...)` not `click [here](...) for the Container Contract`.
 
 ### Inline code (backticks)
@@ -196,7 +227,7 @@ If a list item runs over ~2 lines, it should probably be a sub-section with pros
 
 - **No emoji in main docs.** Matches the CLI default rendering. Exception: documentation *describing* the `--slop` CLI flag may use emojis, since that's the point.
 - **No screenshots in v0.1.** Text is more durable; screenshots rot the moment the UI shifts.
-- **No version histories inline** ("v0.2 added X, v0.3 added Y"). That's what [CHANGELOG.md](../CHANGELOG.md) is for.
+- **No version histories inline** ("v0.2 added X, v0.3 added Y"). That's what [CHANGELOG.md](../CHANGELOG.md) is for. The exception is the **History** section of ADRs and task cards, which records how a decision changed.
 - **No "Coming soon" sections** for unbuilt features. If it doesn't exist, don't document it. Use [roadmap.md](./roadmap.md) to flag intent.
 - **No tutorials or how-to guides in v0.1.** README quick start covers first-time bootstrap. A proper getting-started tutorial lives in [v0.3 docs work](./roadmap.md#v03--fabric-ergonomics--robustness).
 
@@ -214,6 +245,11 @@ If a list item runs over ~2 lines, it should probably be a sub-section with pros
 | Dev workflow (branches, PRs, tests) | `CONTRIBUTING.md` |
 | Vulnerability reporting + threat model | `SECURITY.md` |
 | Style conventions | `docs/style-guide.md` (this file) |
+| Order of work, phases, Definition of Done | `docs/plan.md` |
+| How to do one task (background, decisions, steps, tests) | `docs/tasks/Txx-*.md` |
+| Real problems hit and how they were solved | `docs/background/challenges-faced.md` |
+| Which checks run where | `docs/architecture/test-map.md` |
+| Short guide for AI coding assistants | `CLAUDE.md` |
 
 If a piece of writing fits two categories, pick the more durable one (ADR > architecture > PRD > README). If it fits none, it probably doesn't belong in docs.
 

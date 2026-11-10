@@ -13,6 +13,37 @@ Durable architectural reference for Compute4Me. These documents describe the sys
 | **[error-handling.md](./error-handling.md)** | Error message format, exit codes, Python exception hierarchy, what counts as an "error" vs an "event." |
 | **[deployment.md](./deployment.md)** | Practical reference: volume mounts, GPU flags, Docker socket grant on Workers, multi-GPU hosts, where the CLI lives. |
 | **[operations.md](./operations.md)** | Running and maintaining a deployment: backup/restore, upgrades, moving the Master, cert rotation, pausing/decommissioning Workers, multi-Room, co-location, storage growth, emergencies. |
+| **[test-map.md](./test-map.md)** | Which checks run where (hooks, CI jobs, local, Docker host, real fleet) and the commands that run them. |
+
+## Diagrams
+
+Every diagram, by kind. *As built* diagrams show the code today; *Planned* ones show a card's recommendation and change when the card is settled.
+
+| Kind | Diagram | Where | Status |
+|---|---|---|---|
+| Context | Actors and external systems | [overview.md](./overview.md#system-context) | Concept |
+| Component | Master and Worker components, sibling containers | [overview.md](./overview.md#components) | Target |
+| Deployment | Hosts, containers, ports, volumes, socket, GPU | [deployment.md](./deployment.md#topology) | Target |
+| Package | Package map and import rules | [modules.md](./modules.md#package-map) | As built (T09) |
+| Class | Control-plane classes | [modules.md](./modules.md#classes-as-built) | As built (T09) |
+| Class (interfaces) | Sampler, JobPlan, Scheduler, cost model, ArtifactStore, EventLog | [modules.md](./modules.md#interfaces-planned-for-p2) | Planned (T11–T17, T29) |
+| Class | Pydantic model map | [data-model.md](./data-model.md#model-map) | As built (T02–T09) |
+| Class | Wire message unions | [wire-protocol.md](./wire-protocol.md#message-models) | As built (T03) |
+| ER | SQLite schema | [data-model.md](./data-model.md#master-state-store-sqlite) | As built (T04) |
+| Interface | Container Contract (env in, files out) | [wire-protocol.md](./wire-protocol.md#1-container-contract-masterworker--user-image) | Spec (ADR-0006) |
+| Interface | CLI command tree | [wire-protocol.md](./wire-protocol.md#41-command-surface) | Spec, status per command |
+| Sequence | Join | [overview.md](./overview.md#join) | Target |
+| Sequence | Submit, schedule, run, collect | [overview.md](./overview.md#submit-schedule-run-collect) | Target |
+| Sequence | A Worker dies mid-Task | [overview.md](./overview.md#a-worker-dies-mid-task) | Planned (T18) |
+| Sequence | The Master restarts | [overview.md](./overview.md#the-master-restarts) | Planned (T20) |
+| Sequence | Control-channel lifecycle | [wire-protocol.md](./wire-protocol.md#connection-lifecycle) | Target |
+| Sequence | Task execution on a Worker | [modules.md](./modules.md#task-execution-on-a-worker) | Planned (T12, T17) |
+| Sequence | Fetching a shard | [wire-protocol.md](./wire-protocol.md#fetching-a-shard) | Planned (T11, T12) |
+| State | Worker, Task, Job lifecycles | [overview.md](./overview.md#lifecycle-states) | Target |
+| State | Worker daemon connection | [modules.md](./modules.md#worker-daemon--workerdaemonpy) | As built (T08) |
+| Activity | Scheduler decision | [modules.md](./modules.md#scheduler--masterschedulerpy) | Planned (T15, T16) |
+| Activity | Failure handling | [modules.md](./modules.md#failure-controller--masterfailurepy) | Planned (T18, T19) |
+| Dependency | Task graph | [../plan.md](../plan.md#task-dependency-graph) | Plan |
 
 ## How these docs relate to PRD and ADRs
 
@@ -26,4 +57,4 @@ When v0.2 begins, the PRD is rewritten for the new scope; these architecture doc
 
 - Terminology follows [../context.md](../context.md). Terms like **Fabric**, **Master**, **Worker**, **Room**, **Capability Profile** are canonical.
 - Code signatures shown in Python (the implementation language) but are intentionally *interface-shaped* — implementations can change without invalidating these docs as long as the interface holds.
-- ASCII diagrams over rendered images (diffable in git, copy-pasteable, no external dependencies).
+- Diagrams are **Mermaid** blocks inside the Markdown (diffable, rendered by GitHub); render them locally before committing ([style-guide.md](../style-guide.md#diagrams)). A PR that changes what a diagram shows updates the diagram and, for an *As built* one, its task label.
