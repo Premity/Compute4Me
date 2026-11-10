@@ -41,7 +41,7 @@ After nine tasks, `compute4me serve`, `worker` and `token issue` still raise `No
    Foreground only; no `-d` (Docker's own `-d` covers it until T22).
 2. **Smoke assertion.** Recommendation: the Master runs with JSON logs (non-TTY in CI), and the smoke script waits up to 60 s for a line with `"event": "worker_joined"`. It then checks `master.db` through `docker compose exec master python -c …` for one `workers` row with `status='idle'`. That needs no `status` command (T24).
 3. **Where the smoke script lives.** Recommendation: `scripts/smoke/compose_join.py` (Python per the style guide's > 20-line rule), run by `make smoke` and a CI job `ci-compose`.
-4. **Fingerprint mismatch.** Today `WorkerDaemon.run` treats `CertPinError` like a network error and retries forever with backoff, but the token's pinned fingerprint never starts matching (found while drawing the daemon state machine, 2026-11-11). Recommendation: make it terminal like `join_reject`: `run` re-raises it, and `worker` exits 3 with a message saying the token was issued by a different Master (or before a cert rotation) and needs re-issuing. Update the state diagram in [modules.md](../architecture/modules.md#worker-daemon--workerdaemonpy).
+4. **Fingerprint mismatch.** *Settled 2026-11-11:* terminal. `WorkerDaemon.run` used to retry `CertPinError` forever with backoff although the token's pinned fingerprint never starts matching; it now re-raises it (fixed outside this task, PR `fix/daemon-pin-and-frame-logging`). What's left here: `worker` exits 3 with the [error-handling.md](../architecture/error-handling.md#cert-fingerprint-mismatch-security-critical) message, which says the token was issued by a different Master (or before a cert rotation) and needs re-issuing.
 
 ## Steps
 
@@ -81,7 +81,7 @@ Also by hand once, outside compose, following the README's operator flow (`docke
 - [ ] `serve`, `token issue` and `worker` work from the image with the flags above; tokens survive a Master restart.
 - [ ] `make smoke` passes locally and `ci-compose` is green.
 - [ ] `docker stop` on either container exits cleanly in under 5 s.
-- [ ] A bad token makes `worker` exit 3 with a formatted error (no traceback without `--debug`).
+- [ ] A bad token, or a token pinning another Master's cert, makes `worker` exit 3 with a formatted error (no traceback without `--debug`).
 - [ ] README and deployment docs describe exactly what now runs.
 - [ ] T22's stub is updated to say what's left.
 
@@ -100,3 +100,4 @@ Also by hand once, outside compose, following the README's operator flow (`docke
 ## History
 
 - 2026-11-10: Card written (planning rewrite). Pulled forward from T22 by user decision.
+- 2026-11-11: Decide-first 4 settled by the user: a fingerprint mismatch is terminal. The daemon side shipped early in `fix/daemon-pin-and-frame-logging`; the exit code stays in this task.

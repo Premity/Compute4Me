@@ -462,14 +462,14 @@ stateDiagram-v2
     Connecting --> Pinning: TLS handshake done
     Connecting --> Backoff: OSError or ConnectionClosed
     Pinning --> Joining: fingerprint matches
-    Pinning --> Backoff: CertPinError
+    Pinning --> [*]: CertPinError raised, the token needs re-issuing
     Joining --> Connected: join_ack, worker_id recorded
     Joining --> [*]: join_reject, JoinRejected raised
     Connected --> Connecting: Master closed the socket, backoff reset to 1 s
     Backoff --> Connecting: sleep 1 s, doubling to 30 s
 ```
 
-A `CertPinError` is currently retried like a network error, although a pinned fingerprint never starts matching; [T31](../tasks/T31-runnable-cli.md) settles whether it becomes terminal.
+Both `join_reject` and a fingerprint mismatch are terminal: retrying can't fix the token, and the fingerprint pinned in it never starts matching a different Master's cert. [T31](../tasks/T31-runnable-cli.md) turns both into exit code 3.
 
 ### Task execution on a Worker
 

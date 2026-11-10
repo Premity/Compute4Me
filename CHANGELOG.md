@@ -49,6 +49,11 @@ For per-version Product Requirements (scope, acceptance criteria), see [docs/prd
 - PRD lifecycle: living `docs/prd.md` describes the current milestone; archived to `docs/archive/prd-vX.Y.md` on each version ship (Pattern B).
 - Versioning: SemVer Pattern A (no pre-releases for v0.x); tag every minor; GitHub Releases authored only when there's an audience.
 
+### Fixed
+- **Worker no longer retries a cert fingerprint mismatch forever.** `WorkerDaemon.run` treated `CertPinError` as transient and reconnected with backoff indefinitely, though the token's pinned fingerprint never starts matching; it is now terminal like `join_reject` (T31 maps both to exit code 3).
+- **Master logs dropped frames.** `ControlServer` silently discarded frames that weren't JSON or failed validation; it now logs a WARNING with the message type and the failing fields, never the frame itself or Pydantic's input-echoing error text (a `join` carries the token). Matches wire-protocol.md §Versioning and ADR-0018.
+- Corrected docstrings: `proto/messages.py` contradicted itself on unknown types, and `JoinReject` / `JoinRejected` listed a fingerprint mismatch, which the Master can't detect (the Worker checks it before sending `join`). The CLI placeholders now name the task that implements each command (T31, T22, T24) instead of `prd.md §8`.
+
 ### Notes
 - Greenfield repo. The pre-implementation period set up the design corpus (PRD, CONTEXT, ROADMAP, 14 ADRs, architecture docs, research framing) and the development workflow (CONTRIBUTING, PR/issue templates, CI gates).
 - Code implementation begins with **T01 — Repo skeleton + packaging + image** (now [docs/plan.md](./docs/plan.md)).
