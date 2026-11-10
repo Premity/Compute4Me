@@ -192,7 +192,7 @@ The in-flight Task is re-queued by the Master after a 30s heartbeat timeout; ano
 
 ### 2.4 Worker reconnect behavior
 
-Workers auto-reconnect with exponential backoff after a transient disconnect (Master restart, network blip, laptop sleep): 1 s, doubling to a cap of 30 s, then every 30 s indefinitely until stopped ([daemon.py](../../src/compute4me/worker/daemon.py)). A `join_reject` (bad, expired or revoked token) is **not** retried: the Worker exits with code 3. No operator action is needed for transient drops.
+Workers auto-reconnect with exponential backoff after a transient disconnect (Master restart, network blip, laptop sleep): 1 s, doubling to a cap of 30 s, then every 30 s indefinitely until stopped ([daemon.py](../../src/compute4me/worker/daemon.py)). A `join_reject` (bad, expired or revoked token) or a cert fingerprint mismatch (the token was issued by a different Master, or before a [cert rotation](#15-rotate-the-master-cert-rare)) is **not** retried: the Worker exits with code 3. No operator action is needed for transient drops.
 
 ## 3. Multi-Room operation
 

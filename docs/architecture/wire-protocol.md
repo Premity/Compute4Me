@@ -125,7 +125,7 @@ See [ADR-0007](../adr/0007-websocket-http-transport.md). JSON messages over one 
 | `type` | Payload | When |
 |---|---|---|
 | `join_ack` | `{worker_id}` | Token verified, capacity available. |
-| `join_reject` | `{reason}` | Bad/expired/revoked token, `max_workers` exceeded, fingerprint mismatch. |
+| `join_reject` | `{reason}` | Bad/expired/revoked token, `max_workers` exceeded. (A fingerprint mismatch is caught by the Worker before it sends `join`; the Master never sees it.) |
 | `task_assign` | `{task_id, code_ref, args, input_refs, requires}` | Scheduler matches Worker to a Task. |
 | `task_cancel` | `{task_id}` | User cancellation; runner sends SIGTERM(30s) then SIGKILL. |
 | `bandwidth_probe` | `{}` | Master measures throughput/RTT for the profile. |
