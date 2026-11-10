@@ -1,5 +1,6 @@
 ---
-status: accepted; amended by [ADR-0014](./0014-admin-tokens-for-submission.md)
+status: accepted (amended by ADR-0014)
+date: 2026-05-20
 ---
 
 # Closed-Membership Rooms via Invite Tokens
@@ -12,7 +13,7 @@ Compute4Me pools compute from machines the operator does not fully administer (a
 
 ## Decision
 
-Compute4Me uses **closed-membership Rooms gated by signed Invite Tokens**. The Master issues JWT-style tokens carrying `room`, `max_workers` (concurrent-worker cap, nullable for unlimited), and `expires_at` (default 30 days). A Worker presents a token to join; the Master verifies the signature offline and tracks live worker counts per token. Trust is established **out of band** — you only issue tokens to people you trust. Byzantine-robust aggregation and open/public Rooms are explicitly out of scope.
+Compute4Me uses **closed-membership Rooms gated by signed Invite Tokens**. The Master issues signed JWTs whose claims are listed in [data-model.md](../architecture/data-model.md#invite-token-claims-signed): `jti` (the revocation key), `room`, `max_workers` (concurrent-worker cap, nullable for unlimited), `expires_at` (default 30 days), `master_cert_fp` ([ADR-0011](./0011-tls-fingerprint-in-token.md)) and `admin` ([ADR-0014](./0014-admin-tokens-for-submission.md)). A Worker presents a token to join; the Master verifies the signature offline and tracks live worker counts per token. Trust is established **out of band** — you only issue tokens to people you trust. Byzantine-robust aggregation and open/public Rooms are explicitly out of scope.
 
 ## Why
 
@@ -26,7 +27,19 @@ Compute4Me uses **closed-membership Rooms gated by signed Invite Tokens**. The M
 - Future readers steeped in volunteer-DL security will ask "where is the Byzantine-robust aggregation?" The answer is here: trust is out-of-band, so it isn't needed at this scope.
 - An open/public Room mode (anyone joins, statistical defenses required) would be a *separate mode* layered on later, not a change to this one. The token-gated path remains the default.
 
+## Alternatives considered
+
+- **Admin-provisioned, fully trusted membership** (the Ray model): contradicts the premise that the operator does not administer contributors' machines.
+- **Open/public Rooms with Byzantine-robust aggregation** (Krum, median-of-means, trimmed mean): needed only for untrusted participants; a research subfield of its own.
+- **Cryptographic guarantees** (secure aggregation, differential privacy): out of scope for a closed-membership tool.
+
 ## Revisit when
 
 - Compute4Me needs to admit genuinely untrusted participants (a public volunteer pool).
 - Contributors are numerous enough that out-of-band trust establishment stops scaling.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-05-30: Amended by ADR-0014 (the `admin` capability bit), edited in place.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite. The token claim list now matches data-model.md and the code (`jti`, `master_cert_fp`, `admin` were missing). No change to the decision.

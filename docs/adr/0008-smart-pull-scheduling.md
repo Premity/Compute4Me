@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Smart-Pull Scheduling
@@ -19,6 +20,17 @@ The Master must assign Tasks to Workers that differ by orders of magnitude in sp
 3. **The "smart" (best-fit) part is the contribution.** Plain pull would put the biggest Task on whichever Worker happens to be free first. Best-fit selection injects heterogeneity-awareness — the differentiation from Ray's "any node with a free GPU" ([ADR-0005](./0005-roll-our-own-orchestration.md)).
 4. **Coarse is enough.** Even 2×-accurate runtime estimates beat round-robin; precision isn't worth the v0.1 engineering.
 
+## Alternatives considered
+
+- **Push all Tasks up front** (a static plan): strands a big Task on a slow Worker when an estimate is wrong, and can't absorb Optuna's trials arriving over time.
+- **Plain pull (FIFO):** robust but heterogeneity-blind; the biggest Task goes to whoever is free first.
+- **Exact optimisation of R‖Cmax:** NP-hard, and needs runtime estimates far more precise than v0.1 has.
+
 ## Revisit when
 
 - v0.2 adds a calibrated cost model, real-time-throughput rebalancing, dynamic re-sharding, and multi-Job concurrency with cross-Job fairness — all building on this queue, not replacing it.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision. Open detail owned by T16 (the exact best-fit rule); its answer is added here as a History line.

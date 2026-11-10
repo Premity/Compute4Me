@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Wrap Optuna for Search Spaces, Not a Homegrown DSL
@@ -23,6 +24,16 @@ Define a small **Sampler** interface (`ask() -> config`, `tell(config, result)`)
 
 - Running N trials in parallel weakens a sequential sampler's quality slightly (configs are drawn before all prior results return). Handled via Optuna's `ask`-before-all-`tell` async support; acceptable, and matches how Ray Tune handles the same.
 
+## Alternatives considered
+
+- **A homegrown search-space DSL:** reinvents Optuna and loses TPE, multivariate TPE and NSGA-II.
+- **Ray Tune:** pulls in Ray ([ADR-0005](./0005-roll-our-own-orchestration.md)).
+
 ## Revisit when
 
 - v0.3 adds additional Sampler implementations (Hyperopt, scikit-optimize, DEAP) behind the same interface, only when someone needs one.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

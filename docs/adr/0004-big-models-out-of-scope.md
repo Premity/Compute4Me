@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Models Larger Than One GPU Are Out of Scope Until the Big-Model Thread
@@ -26,8 +27,18 @@ The big-model work has its own design tree:
 - **v0.6 — big-model inference**: a new **Pipeline Job** primitive (alongside Map and Search). Each Worker hosts a contiguous range of model layers; inference requests stream through the pipeline via Master. Activation bandwidth is tractable (megabytes per request, not gigabytes). Estimated 6–8 weeks on top of the v0.5 substrate.
 - **v1.0 — big-model training**: pipeline parallelism with backward pass + gradient flow, master-orchestrated layer assignment based on **Capability Profile**, SWARM-style re-routing when a Worker drops. This is the genuinely novel research contribution — "master-orchestrated pipeline parallelism over a hub topology with heterogeneity-aware layer assignment" — and is largely unclaimed in the literature.
 
+## Alternatives considered
+
+- **FSDP / tensor parallelism:** needs NVLink-class peer bandwidth, which contradicts the master-brokered, no-peer-link design ([ADR-0003](./0003-master-on-data-plane.md)).
+- **Pipeline parallelism now:** tractable through a Master relay but a new primitive and a 6–12 month effort; scheduled as v0.6 (inference) and v1.0 (training).
+
 ## Revisit when
 
 - A user actually needs to run/train a model larger than the largest GPU in their **Room**.
 - The v0.5 substrate is shipped and proven.
 - We're ready to commit a major version-cycle to the big-model thread.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

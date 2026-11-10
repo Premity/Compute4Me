@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Two Primitives (Map + Search), Not a Job-Type Laundry List
@@ -23,6 +24,15 @@ Everything else composes (ensemble inference = Map over a model list; workflows 
 2. **Cleaner contribution.** "A composable orchestration substrate" is a stronger and more honest claim than "we support N workload types" — and it doesn't claim to have invented HPO or inference.
 3. **Forces a generic abstraction.** Supporting two primitives from day one prevents baking HPO-specific assumptions into the Task model — which is what makes the model-agnostic container contract ([ADR-0006](./0006-black-box-container-contract.md)) possible.
 
+## Alternatives considered
+
+- **A job-type enum** (`hpo | inference | preprocess | eval | ensemble | …`): every new type means new decomposition and scheduling code, and the enum never stops growing.
+
 ## Revisit when
 
 - v0.6 adds **Pipeline** as a third primitive for big-model inference — a request traverses multiple Workers, which neither Map nor Search expresses. See [ADR-0004](./0004-big-models-out-of-scope.md).
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

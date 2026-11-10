@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-30
 ---
 
 # Master URL Passed Separately From Token
@@ -67,3 +68,8 @@ The Worker validates the cert it sees against the `master_cert_fp` carried in th
 
 - A multi-Master / failover topology becomes real (then URL discovery or a coordination layer becomes worth the complexity).
 - Operators consistently complain about the two-arg UX (unlikely — almost everyone uses env vars or the optional alias).
+
+## History
+
+- 2026-05-30: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Master on the Data Plane; Workers Connect Outbound Only
@@ -25,7 +26,17 @@ Compute4Me's **Workers** live behind firewalls and NATs that often forbid inboun
 - Readers from the Ray/Hivemind world will ask "why are gradients going through the master?" — this is the answer.
 - Direct worker-to-worker links and P2P artifact distribution remain possible *future optimizations* (v0.5 for WAN where the Master uplink saturates), added behind the same `GradientChannel`/transport abstraction.
 
+## Alternatives considered
+
+- **Ring all-reduce over direct Worker-to-Worker links** (NCCL/Gloo, as in DDP, Horovod, Ray): needs inbound connectivity between peers that segmented LANs and home NATs forbid, and relayed through a hub it is strictly worse than a parameter server.
+- **NAT traversal now:** deferred to v0.5 (WAN), where direct links may pay off.
+
 ## Revisit when
 
 - Profiling shows the Master uplink (not the slowest Worker's compute) is the steady-state bottleneck.
 - A deployment has reliable worker-to-worker connectivity that would make direct all-reduce worthwhile.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

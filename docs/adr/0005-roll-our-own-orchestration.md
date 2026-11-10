@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Roll Our Own Orchestration, Not Ray
@@ -19,6 +20,15 @@ Build the Master + Worker orchestration ourselves — a job queue, capability-aw
 3. **Ray's free lunch isn't needed for v0.1.** Sophisticated distributed scheduling + fault tolerance matter for complex dependency graphs; v0.1's Map+Search are embarrassingly parallel. A FIFO queue + capability matcher covers 90%. The v0.1 orchestration is ~300–500 LoC.
 4. **It keeps onboarding honest.** Bundling Ray bloats the Worker container and pulls a heavy transitive dependency tree into something contributors run with one command.
 
+## Alternatives considered
+
+- **Wrap Ray** and inherit its scheduler, object store, actor model and fault tolerance: its onboarding assumes admin-provisioned nodes, its scheduler is the part we would replace anyway, and it bloats the Worker container.
+
 ## Revisit when
 
 - v0.4 distributed training — Ray's `collective` primitives are *one* option to evaluate for the data plane. Even then, the orchestration layer stays ours; only the gradient-sync backend is in question.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

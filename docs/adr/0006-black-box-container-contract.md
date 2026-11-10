@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Black-Box Container Contract, Not an SDK
@@ -14,13 +15,22 @@ The container speaks **env-vars-in, files-out** (the "B1" contract), with **no `
 
 ## Why
 
-1. **It delivers the model-agnostic promise.** Users bring a standard Dockerized script, add a ~10-line entrypoint shim (or use our base image), and it runs — no framework leaking into model code.
+1. **It delivers the model-agnostic promise.** Users bring a standard Dockerized script, add a ~10-line entrypoint shim, and it runs — no framework leaking into model code.
 2. **It's debuggable in isolation.** A user can run their container locally with the same env vars and reproduce exactly what a Worker does — invaluable across heterogeneous machines.
 3. **It's language-agnostic by accident.** JAX, TensorFlow, or non-Python containers work identically, because the contract is files + env vars, not a Python API.
 4. **One contract, both primitives.** Map Tasks get a shard in `C4M_INPUT_DIR`; Search Tasks get hyperparameters in `C4M_CONFIG`. The Worker never knows which primitive produced its Task.
 
 The SDK-decorator alternative couples user model code to Compute4Me — exactly the friction the project exists to remove. The cost of B1 (file-based, not rich-typed, data passing) is a non-issue for DL workloads (small config dicts, file outputs).
 
+## Alternatives considered
+
+- **An SDK / decorator the model code must import** (the Ray style): couples user code to Compute4Me, exactly the friction the project exists to remove. Kept only as optional sugar over the file contract.
+
 ## Revisit when
 
 - v0.3 adds the **B2 sidecar** (live-RPC agent for streaming metrics + mid-Task checkpoint coordination). It layers *on top of* this contract without changing it — power-users opt in, the black-box default stands.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite. Removed "or use our base image": no base image is planned for v0.1. Open for T17: how user containers mount inputs/outputs through the host Docker daemon ([T17 card](../tasks/T17-runner-and-e2e.md)); the answer is recorded here.

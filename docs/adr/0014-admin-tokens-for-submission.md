@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-30
 ---
 
 # Admin Tokens for Job Submission
@@ -33,7 +34,7 @@ Concretely:
 
 2. **The trust model already permits it.** [ADR-0002](./0002-closed-membership-rooms.md) assumes out-of-band-established trust: the operator chooses who to invite. An admin token is just a more privileged invite — same trust model, more scope. The operator is the same person who decides who joins as a Worker; they're not a different principal.
 
-3. **In v0.1 the researcher and operator are usually the same person.** Hamda runs `serve` and submits her own `spacesight` Jobs. Adding a parallel API-key scheme for this case is bureaucracy without payoff. When operators and researchers diverge (later milestones, or shared deployments), an admin token is still the right primitive — the operator just issues admin tokens to specific researchers.
+3. **In v0.1 the researcher and operator are usually the same person.** The operator runs `serve` and submits their own `spacesight` Jobs. Adding a parallel API-key scheme for this case is bureaucracy without payoff. When operators and researchers diverge (later milestones, or shared deployments), an admin token is still the right primitive — the operator just issues admin tokens to specific researchers.
 
 4. **Single point of trust = single point of revocation.** Compromise an admin token → revoke its `jti`. Same flow as a Worker token. No "where do I find the API key list?" surprise.
 
@@ -58,3 +59,8 @@ Concretely:
 
 - A real deployment has untrusted submitters (e.g., a shared Master serving multiple labs). Then we'd want fine-grained per-Job quotas or per-token Room scoping for submission — that's a v1.0+ conversation.
 - An incident shows that an admin token leaking is materially worse than a Worker token leaking (it is — admin can submit a malicious image). Worth documenting the elevated trust expectations in operator docs at that point; for v0.1 the closed-membership assumption holds.
+
+## History
+
+- 2026-05-30: Accepted.
+- 2026-11-10: Format normalised; persona wording made neutral ("the operator"). No change to the decision.

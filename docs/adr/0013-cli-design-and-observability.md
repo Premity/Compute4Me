@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-30
 ---
 
 # CLI Design and Observability Command Split
@@ -14,7 +15,7 @@ We also need to settle the structural shape (flat-verb vs noun-verb hierarchy vs
 
 Three coupled decisions:
 
-1. **Structure:** **flat command list** (git-style), with one nested group (`token`) for the only noun that has multiple verbs. Eight top-level commands fit in one `--help` screen.
+1. **Structure:** **flat command list** (git-style), with one nested group (`token`) for the only noun that has multiple verbs. About ten top-level commands fit in one `--help` screen.
 
 2. **Five distinct observability commands**, not one:
    - `status` — fleet topology + Job progress summary (snapshot; `--watch` for live)
@@ -34,7 +35,7 @@ Full surface in [wire-protocol.md §4](../architecture/wire-protocol.md).
 
 ## Why
 
-1. **Flat structure fits the size.** Eight commands across three nouns (master, worker, token) is too small for the gh/kubectl noun-verb hierarchy to pay off. Modern noun-verb conventions assume 30+ commands; we don't have that, and the "type less" win for daily use is real. The single nested group (`token` with 3 verbs) genuinely benefits from grouping; everything else is flat.
+1. **Flat structure fits the size.** About ten commands across three nouns (master, worker, token) is too small for the gh/kubectl noun-verb hierarchy to pay off. Modern noun-verb conventions assume 30+ commands; we don't have that, and the "type less" win for daily use is real. The single nested group (`token` with 3 verbs) genuinely benefits from grouping; everything else is flat.
 
 2. **The five-command observability split avoids the One Status Command anti-pattern.** Categories differ structurally: fleet topology is a *snapshot*, container logs are a *stream*, system events are a *structured stream*, trial metrics are a *stream of typed records*, final results are *files*. Conflating any two means designing one CLI to serve incompatible use cases. The split mirrors what kubectl, docker, ray, and SLURM converged on independently.
 
@@ -65,3 +66,8 @@ Full surface in [wire-protocol.md §4](../architecture/wire-protocol.md).
 - The command surface grows past ~15 top-level commands (then consider migrating to noun-verb).
 - Users repeatedly conflate two observability commands (sign the split is wrong).
 - A real demand emerges for tighter W&B/MLflow integration that the loose env-pass model can't satisfy.
+
+## History
+
+- 2026-05-30: Accepted.
+- 2026-11-10: Format normalised; command count corrected (the surface in wire-protocol.md §4.1 has ten top-level commands plus `version`/`help`). The logging and event machinery under these commands is [ADR-0018](./0018-logging-and-events.md); minimal `serve`/`worker`/`token issue` move to P1 (T31), the rest stays in T22/T24. No change to the decision.

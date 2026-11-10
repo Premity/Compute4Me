@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # TLS via Self-Signed Cert Fingerprint in the Invite Token
@@ -18,6 +19,21 @@ The Master holds a **self-signed certificate**; its fingerprint rides inside eve
 2. **No domain or CA required.** A Master on a bare VPS IP or a lab hostname works. Let's Encrypt would force a domain the Master may not have.
 3. **mTLS is overkill.** The token already authenticates the Worker; issuing and distributing client certs would add onboarding friction for no security gain at this trust level.
 
+## Alternatives considered
+
+- **A public CA / Let's Encrypt certificate:** requires a domain the Master may not have (a bare VPS IP or a lab hostname).
+- **Mutual TLS:** client certificates for every Worker add onboarding friction for no gain, because the token already authenticates the Worker.
+
+## Consequences
+
+- The cert is generated once and reused (10-year validity, key file mode `0600`, T06). Rotating it changes the fingerprint and invalidates every issued token; [operations.md §1.5](../architecture/operations.md) is the procedure.
+- Hostname verification is off by design: the Worker accepts any hostname as long as the presented cert matches the pinned fingerprint. That is what lets a Master move hosts ([ADR-0015](./0015-master-url-separate-from-token.md)).
+
 ## Revisit when
 
 - A future open/public-Room mode (someday) admits Workers without out-of-band tokens — that needs a different trust bootstrap, since the token can no longer be assumed trustworthy.
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.

@@ -1,5 +1,6 @@
 ---
 status: accepted
+date: 2026-05-20
 ---
 
 # Flat Master, not Hierarchical Aggregation
@@ -28,8 +29,17 @@ To make hierarchy a later-additive feature instead of a later-rewrite, we hold t
 
 If we ever cross the scale or topology threshold where hierarchy pays, adding a Sub-Master role on top of the existing abstractions is roughly a multi-week change, not a rewrite. Until then, every reader who asks "why aren't they hierarchical?" should be pointed here.
 
+## Alternatives considered
+
+- **Hierarchical aggregation** (Sub-Masters per network tier, the NCCL / federated edge→fog→cloud pattern): the textbook answer to multi-tier networks, but three component types are ~4–5× the engineering surface, with new failure modes, and it adds no novelty at 4–20 Workers. Kept possible later through the three rules above.
+
 ## Revisit when
 
 - More than ~50 Workers in a single Room.
 - Workers cluster into ≥3 network tiers with order-of-magnitude bandwidth gaps.
 - Profiling shows the Master's uplink is the steady-state bottleneck (not the slowest Worker's gradient compute).
+
+## History
+
+- 2026-05-20: Accepted.
+- 2026-11-10: Format normalised (date, alternatives, history) in the planning rewrite; no change to the decision.
