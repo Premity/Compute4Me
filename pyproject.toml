@@ -27,6 +27,16 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.optional-dependencies]
+# Throughput micro-benchmark only (worker/profiler.py run_micro_benchmark). NOT needed for
+# real training/inference — the user's container carries its own ML stack (ADR-0006). Kept
+# out of the default install and both Docker images so they stay lean; Worker hosts install
+# the CUDA-matched build once via scripts/setup-worker.sh. See T09.
+bench = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+]
+
 [project.scripts]
 compute4me = "compute4me.cli:app"
 

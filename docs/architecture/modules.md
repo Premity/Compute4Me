@@ -179,14 +179,22 @@ No adversarial defense — see [ADR-0002](../adr/0002-closed-membership-rooms.md
 ### Capability profiler — `worker/profiler.py`
 
 ```python
-def profile() -> CapabilityProfile
+def profile(*, data_dir, cache_dir, gpu_probe=detect_gpu, stats_probe=host_stats,
+            dataset_scan=scan_cached_datasets, benchmark=None) -> CapabilityProfile
     # Build a full CapabilityProfile: GPU/CPU/RAM/disk facts + cached datasets + bench.
+    # Probes are injectable (fakes in tests). bandwidth/RTT are left 0.0 — Master-probed (T10).
 
+def detect_gpu() -> GpuInfo          # nvidia-smi, or model='cpu' on any failure
+def host_stats(data_dir) -> tuple[int, int, int]   # (cpu_cores, ram_mb, disk_free_mb)
+def scan_cached_datasets(cache_dir) -> list[tuple[str, str]]   # (dataset_id, version_hash)
+def ensure_host_id(data_dir) -> str  # persisted UUID, stable across restarts
 def run_micro_benchmark(seconds: float = 30) -> float
     # Fixed ResNet18 fwd/bwd loop, samples/sec. The yardstick across all Workers.
 ```
 
-Testable against fake hardware probes (inject `nvidia-smi` / `psutil` shims). `host_id` is persisted in the container volume so it's stable across restarts.
+Testable against fake hardware probes (inject `nvidia-smi` / `psutil` shims via the `*_probe` args). `host_id` is persisted in the container volume so it's stable across restarts.
+
+`run_micro_benchmark` is the **only** part that needs PyTorch, and it imports torch lazily — the Worker runs the *user's* container for real training (ADR-0006), so torch is not a Worker runtime dependency. It is the optional `bench` extra (kept out of the default install and both images, which stay lean); a Worker host installs the CUDA-matched build once via [`scripts/setup-worker.sh`](../../scripts/setup-worker.sh). Absent torch, the benchmark raises `BenchmarkUnavailable` with install guidance. The benchmark is GPU/torch-touching → exercised manually, skipped in CI.
 
 ### Container runner — `worker/runner.py`
 
