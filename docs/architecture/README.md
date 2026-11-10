@@ -28,8 +28,8 @@ Every diagram, by kind. *As built* diagrams show the code today; *Planned* ones 
 | Class | Control-plane classes | [modules.md](./modules.md#classes-as-built) | As built (T09) |
 | Class (interfaces) | Sampler, JobPlan, Scheduler, cost model, ArtifactStore, EventLog | [modules.md](./modules.md#interfaces-planned-for-p2) | Planned (T11–T17, T29) |
 | Class | Pydantic model map | [data-model.md](./data-model.md#model-map) | As built (T02–T09) |
-| Class | Wire message unions | [wire-protocol.md](./wire-protocol.md#message-models) | As built (T03) |
-| ER | SQLite schema | [data-model.md](./data-model.md#master-state-store-sqlite) | As built (T04) |
+| Class | Wire message unions | [wire-protocol.md](./wire-protocol.md#message-models) | As built (T04) |
+| ER | SQLite schema | [data-model.md](./data-model.md#master-state-store-sqlite) | As built (T03) |
 | Interface | Container Contract (env in, files out) | [wire-protocol.md](./wire-protocol.md#1-container-contract-masterworker--user-image) | Spec (ADR-0006) |
 | Interface | CLI command tree | [wire-protocol.md](./wire-protocol.md#41-command-surface) | Spec, status per command |
 | Sequence | Join | [overview.md](./overview.md#join) | Target |

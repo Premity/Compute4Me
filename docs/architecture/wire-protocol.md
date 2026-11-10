@@ -134,7 +134,7 @@ See [ADR-0007](../adr/0007-websocket-http-transport.md). JSON messages over one 
 
 ### Message models
 
-*As built (T03).* [`proto/messages.py`](../../src/compute4me/proto/messages.py): two discriminated unions keyed on `type`, one per direction.
+*As built (T04).* [`proto/messages.py`](../../src/compute4me/proto/messages.py): two discriminated unions keyed on `type`, one per direction.
 
 ```mermaid
 classDiagram

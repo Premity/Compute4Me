@@ -169,7 +169,7 @@ sequenceDiagram
 
 ### The Master restarts
 
-*Planned (T20); the store's `load_*` calls exist since T04.*
+*Planned (T20); the store's `load_*` calls exist since T03.*
 
 ```mermaid
 sequenceDiagram

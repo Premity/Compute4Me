@@ -117,7 +117,7 @@ Planned changes, each additive: `throughput_ref` becomes optional with a `throug
 
 ## Master State Store (SQLite)
 
-*As built (T04).* Relationships between the tables below. Solid lines are foreign keys; dotted lines are hashes held inside JSON columns. The `events` table arrives in T29.
+*As built (T03).* Relationships between the tables below. Solid lines are foreign keys; dotted lines are hashes held inside JSON columns. The `events` table arrives in T29.
 
 ```mermaid
 erDiagram
