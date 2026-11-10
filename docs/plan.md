@@ -18,7 +18,7 @@
 | **P1 — Control-plane bootstrap** | A Worker *container* joins a Master *container* | T05–T09 ✅, then **T28 → T29 → T30 → T31 → T10** | `docker compose up` with one Master and one Worker: the Worker joins, the Master stores its Capability Profile (with `throughput_ref` and bandwidth/RTT). Runs in CI. |
 | **P2 — Job execution core** | One Job runs end to end | T11, T12, T13, T14, T15, T16, T17 | A tiny Search Job (4 trials of `examples/toy_quadratic`) completes on 2 fake Workers in pytest **and** on 2 real Worker containers locally |
 | **P3 — Reliability** | Survives drops, failures and restarts | T18, T19, T20, T21 | Kill a Worker and then the Master mid-Job; the Job still completes |
-| **P4 — Interfaces & observability** | The full operator and researcher UX | T22, T23, T24, T33 | The PRD §12 operator loop from a clean machine |
+| **P4 — Interfaces & observability** | The full operator and researcher UX | T22, T23, T24, T33 | PRD §13 criteria 1–3 and 8, run from a clean machine with the full CLI |
 | **P5 — Eval & research harness** | The scheduler paper's numbers | T32, T25, T26, T27 | One command produces the 3-arm makespan + operator-effort table from registered runs |
 
 Why P1 changed (2026-11-10): `serve`, `worker` and `token issue` were scheduled for T22 (P4), so until P4 nothing could be run from the image, and the Docker-first verification rule ([ADR-0020](./adr/0020-docker-is-the-verification-surface.md)) could not be followed. The Worker image also could not join at all, because the benchmark needed torch and the image has none ([ADR-0016](./adr/0016-benchmark-runs-as-a-container.md)). T28–T31 fix the tooling, add logging, fix the benchmark and wire the minimal CLI before any more features land.
@@ -175,7 +175,7 @@ Decisions a later task owns. Each card's **Decide first** section has the option
 - **One issue per task**, created from the `Task` issue form, linking its card. The issue tracks who/when/blockers; the card is the spec. (Issue numbers do not match task numbers; PRs already used #1–#10.)
 - **Milestones = phases** (`P1 — Control-plane bootstrap` … `P5 — Eval & research harness`).
 - **Labels:** `phase:P1`…`phase:P5`, `polish`, `spec-issue`, `bug`, `blocked`, `needs-docker`, `needs-gpu`, `needs-fleet`.
-- **Tracking issue "Needs the real fleet":** everything that can only be checked on real hardware (lab GPUs, a NAT'd contributor, the VPS Master), ticked as each is done. PRD §12 criteria 2, 3 and 5 and T25–T27 live there.
+- **Tracking issue "Needs the real fleet":** everything that can only be checked on real hardware (lab GPUs, a NAT'd contributor, the VPS Master), ticked as each is done. The [PRD §13](./prd.md#13-acceptance-criteria-v01-done) criteria not marked *(CI)*, and T25–T27, live there.
 
 ---
 
@@ -211,7 +211,7 @@ Each gets a full card at its detailing session. The bullets are enough to see th
 
 - T31 shipped minimal `serve`/`worker`/`token issue`. T22 adds the rest of [wire-protocol.md §4](./architecture/wire-protocol.md#4-cli): `token revoke/list`, `jobs`, `cancel` (prompt unless `--yes`), rendering modes (`--ascii`, `--slop`), exit codes ([error-handling.md](./architecture/error-handling.md)), `C4M_*` precedence, `-d`, verbosity flags.
 - Settle: how remote commands (`status`, `jobs`, `cancel` from a laptop) reach the Master. They need an authenticated admin endpoint; T11's HTTP app is the natural host.
-- **Acceptance:** the PRD §12 operator loop from a clean machine; `--ascii`/`--slop` render; stdout-not-a-TTY emits JSON-lines.
+- **Acceptance:** PRD §13 criteria 1–3 and 8 from a clean machine; `--ascii`/`--slop` render; stdout-not-a-TTY emits JSON-lines.
 
 ### T23: Python submission API + SDK (P4, L)
 
