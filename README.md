@@ -6,6 +6,40 @@
 
 **v0.1, in development.** P0 (scaffolding) is done and P1 (control-plane bootstrap) is underway: tokens, TLS pinning, the WebSocket transport, the Worker join handshake and the capability profiler are merged (T01–T09). Next: tooling hardening, logging, the benchmark container and a runnable `serve`/`worker` (T28–T31). Live status: [docs/plan.md](./docs/plan.md). Scope and acceptance: [docs/prd.md](./docs/prd.md). After v0.1: [docs/roadmap.md](./docs/roadmap.md).
 
+## Reading order
+
+Read the documents in this order. Unfamiliar terms are defined in the glossary, [docs/context.md](./docs/context.md); the full index of every document is [docs/README.md](./docs/README.md).
+
+**First (about 30 minutes, everyone):**
+
+1. This README.
+2. [docs/context.md](./docs/context.md): the canonical terms (Master, Worker, Room, Invite Token, Capability Profile, Job, Task, …). Every other doc uses them exactly.
+3. [docs/prd.md](./docs/prd.md) §1–3 and §13: what v0.1 is, who it's for, the end-to-end flow, and when it's done.
+4. [docs/architecture/overview.md](./docs/architecture/overview.md): the system in diagrams.
+5. [CONTRIBUTING.md](./CONTRIBUTING.md): setup, the task workflow, branches, PRs.
+6. [docs/plan.md](./docs/plan.md): the task index and dependency graph, to find work.
+
+**Before your first task:**
+
+7. Your task card in [docs/tasks/](./docs/tasks/README.md), plus every ADR and architecture section it links.
+8. [docs/architecture/modules.md](./docs/architecture/modules.md) and [data-model.md](./docs/architecture/data-model.md) for the code you'll touch.
+9. [docs/architecture/test-map.md](./docs/architecture/test-map.md) and [tests/INDEX.md](./tests/INDEX.md): which checks run where, and which tests exist.
+10. [docs/background/challenges-faced.md](./docs/background/challenges-faced.md): problems already hit, so you don't hit them twice.
+11. The existing code and tests the card names.
+
+**As needed:** the remaining [ADRs](./docs/adr/README.md); [wire-protocol.md](./docs/architecture/wire-protocol.md) (Container Contract, messages, CLI, Python API); [deployment.md](./docs/architecture/deployment.md), [operations.md](./docs/architecture/operations.md) and [error-handling.md](./docs/architecture/error-handling.md); [roadmap.md](./docs/roadmap.md); [research/](./docs/research/README.md); [style-guide.md](./docs/style-guide.md); [SECURITY.md](./SECURITY.md).
+
+**By what you're doing:**
+
+| If you're… | Start at |
+|---|---|
+| Running a Room (hosting the Master, issuing tokens) | [deployment.md](./docs/architecture/deployment.md), then [operations.md](./docs/architecture/operations.md) |
+| Submitting Jobs | [wire-protocol.md §5](./docs/architecture/wire-protocol.md#5-python-submission-api-researcher--primary-submit-surface) (Python API) and [§1](./docs/architecture/wire-protocol.md#1-container-contract-masterworker--user-image) (Container Contract for your image) |
+| Contributing a GPU | [deployment.md → Worker deployment](./docs/architecture/deployment.md#worker-deployment) and [SECURITY.md](./SECURITY.md) (the Docker socket grant) |
+| An AI coding agent | [CLAUDE.md](./CLAUDE.md), then [docs/tasks/session-prompt.md](./docs/tasks/session-prompt.md) |
+
+**What runs today:** only `compute4me version` and `--help`; `serve`, `token issue` and `worker` arrive in [T31](./docs/tasks/T31-runnable-cli.md). Until then, [scripts/manual/README.md](./scripts/manual/README.md) has drivers that run the merged pieces (WebSocket server, Worker join) on localhost.
+
 ## Why this exists
 
 Researchers with scattered compute (a few lab GPUs, a CPU box, a friend's spare GPU at home) currently can't pool it easily. **Ray / Horovod / PyTorch DDP** assume an admin-provisioned cluster with SSH and firewall control. **Hivemind / SWARM** can pool internet volunteers but force the model into Decentralized Mixture-of-Experts — useless for a standard InceptionResNet. None of them know that an RTX 3070 is several times faster than a GTX 1060, or which machine already has the dataset cached.
@@ -91,8 +125,8 @@ job = c.submit_search(
     search_space={"lr": loguniform(1e-5, 1e-2), "dropout": uniform(0, 0.5)},
     inputs=["my-dataset/v1"],
 )
-c.wait(job)
-c.download(job, out="./results")
+job.wait()
+job.fetch(out="./results")
 EOF
 ```
 
@@ -129,7 +163,7 @@ For the full operator surface, see [docs/architecture/wire-protocol.md](./docs/a
     ├── adr/               # Architecture Decision Records
     ├── background/        # challenges faced
     ├── research/          # related work and positioning
-    └── archive/           # past versions' PRDs
+    └── archive/           # past versions' PRDs (empty until v0.1 ships)
 ```
 
 ## How it works (in one paragraph)
@@ -157,9 +191,9 @@ Full registry: [docs/roadmap.md](./docs/roadmap.md).
 
 ## Contributing
 
-This is currently a one-person project. The workflow (task cards, branches, commits, PRs, Docker verification, docs convention) is in [CONTRIBUTING.md](./CONTRIBUTING.md); AI coding assistants start at [CLAUDE.md](./CLAUDE.md). Issue templates (task, bug, polish) and a PR template ship with the repo.
+This is currently a one-person project. The workflow (task cards, branches, commits, PRs, Docker verification, docs convention) is in [CONTRIBUTING.md](./CONTRIBUTING.md); AI coding assistants start at [CLAUDE.md](./CLAUDE.md). Issue forms (task, bug, polish, spec issue, decision, fleet check) and a PR template ship with the repo ([CONTRIBUTING → Issues](./CONTRIBUTING.md#issues)).
 
-If you want to discuss or contribute regardless, open an issue — the polish template fits informal feedback, the bug template fits actual broken behavior.
+To discuss or contribute anyway, open an issue: the polish form fits informal feedback, the bug form fits broken behaviour, and the decision form fits a design question.
 
 ## License
 

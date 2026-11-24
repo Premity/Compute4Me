@@ -8,6 +8,8 @@ Guidance for AI coding assistants working in this repo.
 
 ## Read first, in this order
 
+This is the agent's short list for one task. The full reading order for anyone new to the project is [README.md §Reading order](README.md#reading-order); read its first tier once.
+
 1. [docs/plan.md](docs/plan.md): phases, task index, Definition of Done, open items.
 2. **The task card** in [docs/tasks/](docs/tasks/README.md) you're working on (for a stub task, the stub in plan.md; writing the full card comes first, with the user).
 3. Every ADR and architecture section the card links.
@@ -29,7 +31,7 @@ Then check the live state: `git status`, `git log --oneline -10`, `gh pr list`, 
 - **Docs travel with code** in the same PR (CONTRIBUTING has the table). Don't let a doc contradict the code; if you find a contradiction, fix it or raise it, never silently work around it.
 - **Decisions are recorded.** Small ADR changes are edited in place with a dated History line; reversals need a new superseding ADR.
 - **Never invent** API behaviour, version numbers or figures. Check the installed library or the docs; mark anything unchecked **Unverified**.
-- **Python 3.13 only** (`requires-python <3.14`).
+- **Python 3.13 only.** T28 pins it (`.python-version`, `requires-python = ">=3.13,<3.14"`); until then pyproject says only `>=3.13`, so create the venv with `uv venv --python 3.13`.
 
 ## Ask before
 
@@ -43,6 +45,7 @@ make check               # lint + types + tests (no Docker/GPU)
 make image               # build ghcr.io/premity/compute4me:dev
 make image-smoke         # build + --help + version            (from T28)
 make smoke               # compose: Master + Worker join smoke  (from T31)
+make up / worker / logs / down   # dev stack on docker-compose.dev.yml (from T31; `make help` lists all)
 uv run pytest -m 'task("T16")'    # one task's tests
 ```
 

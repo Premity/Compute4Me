@@ -2,6 +2,15 @@
 
 One file per task. The index, phases, dependency graph and Definition of Done are in [../plan.md](../plan.md). Tasks in later phases are stubs in the plan until their detailing session.
 
+## Cards
+
+The order of work is [plan.md's task index](../plan.md#task-index); this is the list of cards that exist. Stubs for P3–P5 live in [plan.md](../plan.md#stubs-p3-p4-p5) until their detailing session.
+
+| Phase | Cards |
+|---|---|
+| P1 | [T28 dev tooling](./T28-dev-tooling.md) · [T29 logging + events](./T29-logging-events.md) · [T30 benchmark container](./T30-benchmark-container.md) · [T31 runnable CLI](./T31-runnable-cli.md) · [T10 bandwidth probe](./T10-bandwidth-probe.md) |
+| P2 | [T11 artifact store](./T11-artifact-store.md) · [T12 shards + cache](./T12-shards-and-cache.md) · [T13 samplers](./T13-samplers.md) · [T14 decomposer](./T14-decomposer.md) · [T15 cost model](./T15-cost-model.md) · [T16 scheduler](./T16-scheduler.md) · [T17 runner + E2E](./T17-runner-and-e2e.md) |
+
 ## How to use a card
 
 Starting a session with a coding agent? Paste [session-prompt.md](./session-prompt.md).

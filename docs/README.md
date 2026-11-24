@@ -4,6 +4,8 @@ All project documentation lives here. The repo root holds only the files GitHub 
 
 ## Where to start
 
+New to the project: follow the **[reading order in the README](../README.md#reading-order)**. This page is the full index.
+
 | You want to… | Read |
 |---|---|
 | Understand the project | [../README.md](../README.md), then [architecture/overview.md](./architecture/overview.md) |
@@ -26,7 +28,30 @@ All project documentation lives here. The repo root holds only the files GitHub 
 | [background/challenges-faced.md](./background/challenges-faced.md) | Real problems hit and how they were solved | Appended in the PR that solves each one |
 | [research/](./research/README.md) | Related work and positioning that informed the design | Updated when the positioning changes |
 | [style-guide.md](./style-guide.md) | Code, logging and docs conventions | Living |
-| [archive/](./archive/) | Frozen past-version PRDs and plans | Append-only |
+| `archive/` | Frozen past-version PRDs and plans (empty until v0.1 ships) | Append-only |
+
+## Outside `docs/`
+
+| Path | Purpose |
+|---|---|
+| [../README.md](../README.md) | Pitch, status, reading order, intended quick start |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Setup, task workflow, branches, PRs, CI, issues |
+| [../CLAUDE.md](../CLAUDE.md) | Rules for AI coding agents |
+| [../SECURITY.md](../SECURITY.md) | Threat model, the Docker socket grant, reporting |
+| [../CHANGELOG.md](../CHANGELOG.md) | What changed, per release (`[Unreleased]` per PR) |
+| [../tests/INDEX.md](../tests/INDEX.md) | Task → test file → markers |
+| [../scripts/manual/README.md](../scripts/manual/README.md) | Manual drivers that run merged pieces on localhost |
+| [../examples/](../examples/resnet18_hpo/README.md) | Sample user images honouring the Container Contract (T17) |
+| [../.github/](../.github/PULL_REQUEST_TEMPLATE.md) | PR template and issue forms |
+
+## Every file under `docs/`
+
+- **Top level:** [prd.md](./prd.md), [plan.md](./plan.md), [context.md](./context.md), [roadmap.md](./roadmap.md), [style-guide.md](./style-guide.md)
+- **[architecture/](./architecture/README.md):** [overview](./architecture/overview.md), [data-model](./architecture/data-model.md), [modules](./architecture/modules.md), [wire-protocol](./architecture/wire-protocol.md), [error-handling](./architecture/error-handling.md), [deployment](./architecture/deployment.md), [operations](./architecture/operations.md), [test-map](./architecture/test-map.md)
+- **[adr/](./adr/README.md):** ADR-0001 … ADR-0021, indexed in its README
+- **[tasks/](./tasks/README.md):** the card template, the [session prompt](./tasks/session-prompt.md) and one card per task (listed in the tasks README)
+- **[background/](./background/challenges-faced.md):** [challenges-faced](./background/challenges-faced.md)
+- **[research/](./research/README.md):** [novelty](./research/novelty.md), [related-work](./research/related-work.md)
 
 ## Conventions
 
