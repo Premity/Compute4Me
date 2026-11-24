@@ -1,0 +1,51 @@
+name: Bug
+description: Something is broken — wrong behaviour, crash or regression.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Redact secrets.** Never paste an Invite Token (`eyJ…`), a signing key, a `.pem` file or Job `env` values. A security vulnerability goes to SECURITY.md, not a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The unexpected behaviour, concretely.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal commands or code. Say whether it happens in the Docker image, locally, or both.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: "Commit (`git rev-parse --short HEAD`) or image tag, Python (`python3 --version`), Docker (`docker --version`), OS, GPU and driver if relevant."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant output, tokens redacted.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I reproduced this on the latest `main` (or the image built from it).
+        - label: I redacted tokens, keys and Job `env` values.
+          required: true

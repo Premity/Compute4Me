@@ -1,0 +1,48 @@
+name: Polish
+description: A UX or ergonomics finding from exploratory testing that doesn't block a merge.
+title: "polish: "
+labels: [polish]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - nit (cosmetic, would be nice)
+        - minor (rough edge, users will notice)
+        - annoying (real friction, fix before the next release)
+    validations:
+      required: true
+  - type: input
+    id: from
+    attributes:
+      label: Found in
+      description: The PR or commit where this showed up.
+      placeholder: "PR #12"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Python API
+        - status / output formatting
+        - error messages
+        - deployment / Docker
+        - docs
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: The current behaviour, concretely, not just the feeling.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Proposed fix (optional)

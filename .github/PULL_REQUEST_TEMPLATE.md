@@ -1,6 +1,6 @@
-## What
+## What and why
 
-<!-- 1–3 sentences: what this PR delivers. -->
+<!-- 1–3 sentences: what this PR delivers and why it's needed now. -->
 
 ## Task
 
@@ -47,6 +47,10 @@ Closes #<issue> · Card: [`docs/tasks/T<NN>-….md`](../docs/tasks/) · Plan: [d
 Findings (each: blocker / polish / spec-issue → fixed here / issue #N / doc updated here):
 
 - _none_
+
+## Results (only if this PR reports numbers)
+
+<!-- Scheduler or benchmark figures (P5, T32+): the registered run ids, a clean tree (no -dirty), fleet profile captured, and what each number measures. Delete this section otherwise. -->
 
 ## Docs touched
 

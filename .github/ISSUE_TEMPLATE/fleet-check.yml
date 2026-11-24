@@ -1,0 +1,31 @@
+name: Fleet check
+description: A check that can only be done on real hardware (lab GPUs, a NAT'd contributor, the VPS Master).
+title: "fleet: "
+labels: [needs-fleet]
+body:
+  - type: textarea
+    id: check
+    attributes:
+      label: What to check
+      description: The behaviour to confirm, and the PRD §13 criterion or task it proves.
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware and network needed
+      placeholder: "2 Workers with different GPUs, one behind NAT; Master on the VPS"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Commands and expected outcome
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result (fill in when run)
+      description: Date, hosts, image tag, output. Link the run record once T32 exists.

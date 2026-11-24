@@ -2,6 +2,8 @@
 
 How work gets done here. Compute4Me is currently a one-person project; the discipline below keeps the build organised, auditable, and safe to hand to a coding agent.
 
+> **New here?** Follow the [reading order in the README](./README.md#reading-order) first.
+>
 > **Short version:** pick the next task in [docs/plan.md](./docs/plan.md) → read its card → settle its **Decide first** questions → branch → draft PR → `make check` → **Verify in Docker** → Ready → manual phase → squash-merge.
 
 ## Quick links
@@ -28,11 +30,20 @@ make check        # lint + types + tests: what CI runs, minus the Docker jobs
 make image        # build the image (needed for every task's Docker verification)
 ```
 
-> **Until T28 merges:** `pre-commit` isn't a dev dependency, so `make dev` fails at the hook step. Run `uv sync` and then `uvx pre-commit install`. There's also no `.python-version` yet, so pin the interpreter by hand: `uv venv --python 3.13 && uv sync` ([T28](./docs/tasks/T28-dev-tooling.md), [ADR-0017](./docs/adr/0017-python-toolchain.md)).
+> **Known setup gaps (until T28 and T31 merge):**
+>
+> - `pre-commit` isn't a dev dependency, so `make dev` fails at the hook step. Run `uv sync`, then `uvx pre-commit install`.
+> - There's no `.python-version` and `requires-python` has no upper bound, so uv may pick Python 3.14. Pin it by hand: `uv venv --python 3.13 && uv sync`. Check with `uv run python --version`.
+> - The pre-commit ruff hook (v0.9.10) is older than the locked ruff (0.15.15), so the hook and `make lint` can disagree. Trust `make lint`.
+> - `make help`, `make hooks`, `make clean` and `make image-smoke` arrive in T28; `make smoke` and the compose targets (`up`, `down`, `logs`, …) in T31.
+> - Nothing runs end to end yet: `serve`, `token issue` and `worker` raise "not implemented" until T31. To see the merged pieces work, use [scripts/manual/](./scripts/manual/README.md).
+> - Versions used so far: uv 0.11.17 (pinned in CI and the Dockerfile), Docker with BuildKit (Compose v2 for T31's smoke). GPU hosts need the NVIDIA driver and [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/); the minimum driver for the bench image is settled in T30.
+>
+> Fixes: [T28](./docs/tasks/T28-dev-tooling.md), [T31](./docs/tasks/T31-runnable-cli.md), [ADR-0017](./docs/adr/0017-python-toolchain.md).
 
 ## The unit of work: a task
 
-All v0.1 work is split into tasks **T01–T33**. [docs/plan.md](./docs/plan.md) lists them with phases, sizes and dependencies; each task in the current and next phase has a **full card** in [docs/tasks/](./docs/tasks/README.md); later ones are stubs in the plan until their detailing session. Task IDs are stable: T28+ were added on 2026-11-10, and the plan's order, not the number, says what comes next.
+All v0.1 work is split into tasks **T01–T34**. [docs/plan.md](./docs/plan.md) lists them with phases, sizes and dependencies; each task in the current and next phase has a **full card** in [docs/tasks/](./docs/tasks/README.md); later ones are stubs in the plan until their detailing session. Task IDs are stable: T28+ were added on 2026-11-10, and the plan's order, not the number, says what comes next.
 
 For each task:
 
@@ -139,6 +150,8 @@ def test_bench_image_reports_positive_throughput() -> None: ...
 
 `make check` runs the jobs that need no Docker; `make image-smoke` and `make smoke` run the Docker ones.
 
+**Where CI stands (2026-11-24).** Today only the three T01 jobs run, with no uv cache, no concurrency cancelling, no timeouts and no image build, so a PR can break the image and still go green. T28 adds the rest. Compared with the sibling project Fovea (lint, import contracts, tests, gitleaks, PR-title check), T28's set is a superset: it adds types, the image build and the docs check, and T31 adds the compose smoke that proves a Worker container really joins a Master container. A release workflow that publishes the image comes in T34 ([ADR-0021](./docs/adr/0021-dev-prod-and-releases.md)).
+
 ## Documentation travels with code
 
 Doc changes caused by a feature go **in the same PR as the code**:
@@ -161,13 +174,16 @@ Typos, restructuring and bulk reformatting go in their own `docs:` PR.
 
 ## Issues
 
-| Template | For |
-|---|---|
-| `Task` | One per task; links the card. The card is the spec; the issue tracks who, when and blockers |
-| `Bug` | Broken behaviour: what happened, expected, steps, environment, logs (redact tokens) |
-| `Polish` | Exploratory-testing findings that don't block a merge: severity, originating PR, area |
+| Form | For | Label it applies |
+|---|---|---|
+| [Task](./.github/ISSUE_TEMPLATE/task.yml) | One per task; links the card. The card is the spec; the issue tracks who, when and blockers | none (set `phase:P*` and the milestone yourself) |
+| [Bug](./.github/ISSUE_TEMPLATE/bug.yml) | Broken behaviour: what happened, expected, steps, environment, logs (tokens redacted) | `bug` |
+| [Polish](./.github/ISSUE_TEMPLATE/polish.yml) | Exploratory-testing findings that don't block a merge: severity, originating PR, area | `polish` |
+| [Spec issue](./.github/ISSUE_TEMPLATE/spec-issue.yml) | A doc, card, ADR or the PRD is wrong or contradicts the code | `spec-issue` |
+| [Decision needed](./.github/ISSUE_TEMPLATE/decision.yml) | An open design question that needs an ADR or a Decide-first answer | none |
+| [Fleet check](./.github/ISSUE_TEMPLATE/fleet-check.yml) | A check only real hardware can do; collected by the "Needs the real fleet" issue | `needs-fleet` |
 
-Blank issues are disabled. **Milestones** are the phases (P1–P5). **Labels:** `phase:P1`…`phase:P5`, `polish`, `spec-issue`, `bug`, `blocked`, `needs-docker`, `needs-gpu`, `needs-fleet`. One standing issue, **"Needs the real fleet"**, collects every check that only real hardware can do (NAT'd contributor, lab GPUs, VPS Master).
+Blank issues are disabled. An issue form can only apply fixed labels, so the Task form can't turn its Phase dropdown into a `phase:P*` label: add the label and milestone by hand, or create task issues with `gh issue create --label phase:P1 --milestone "P1 — Control-plane bootstrap"`. **Milestones** are the phases (P1–P5). **Labels:** `phase:P1`…`phase:P5`, `polish`, `spec-issue`, `bug`, `blocked`, `needs-docker`, `needs-gpu`, `needs-fleet`. One standing issue, **"Needs the real fleet"**, collects every check that only real hardware can do (NAT'd contributor, lab GPUs, VPS Master).
 
 ## Versioning and releases
 
@@ -203,5 +219,6 @@ Before `git tag vX.Y.Z`:
 ## Working with coding agents
 
 - Start the session with [docs/tasks/session-prompt.md](./docs/tasks/session-prompt.md); it points the agent at [CLAUDE.md](./CLAUDE.md) and the task card, and sets the ask-before rules.
+- To review a PR with Claude Code, run `/review-pr <number>` ([.claude/commands/review-pr.md](./.claude/commands/review-pr.md)). It drafts the review in chat for you to edit and post; it never posts, approves or merges.
 - Ask for a summary back before any code: the deliverable, the Done-when list, the files to touch, and the **Decide first** questions with recommendations. Settle those one at a time.
 - Expect the workflow above: branch name, ≥ 2 commits split by seam, draft PR with the template filled in, Docker verification pasted, Ready only when green.

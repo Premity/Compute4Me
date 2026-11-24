@@ -1,13 +1,9 @@
-# Issue template configuration.
-# Disables blank issues so every report picks a structured template
-# (keeps the backlog scannable: polish vs bug).
+# Issue template configuration. Blank issues are disabled so every report uses a form
+# (task, bug, polish, spec issue, decision, fleet check).
 
 blank_issues_enabled: false
 
 contact_links:
   - name: Security vulnerability
     url: https://github.com/Premity/Compute4Me/blob/main/SECURITY.md
-    about: Please email security issues, do not file them as public issues. See SECURITY.md.
-  - name: General question or discussion
-    url: https://github.com/Premity/Compute4Me/discussions
-    about: For open-ended questions (not bugs or polish findings), use Discussions if enabled.
+    about: Report security issues privately as described in SECURITY.md, not as public issues.

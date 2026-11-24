@@ -1,0 +1,36 @@
+name: Spec issue
+description: A doc, task card, ADR or the PRD is wrong, stale, or contradicts the code or another doc.
+title: "spec: "
+labels: [spec-issue]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Which doc is wrong
+      description: Path and section (and line if you have it).
+      placeholder: "docs/architecture/wire-protocol.md §2, join_reject row"
+    validations:
+      required: true
+  - type: textarea
+    id: says
+    attributes:
+      label: What it says
+    validations:
+      required: true
+  - type: textarea
+    id: truth
+    attributes:
+      label: What's actually true, and how you know
+      description: The code (`file:line`), another doc, or a command's output. The PRD wins over other docs (docs/README.md).
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Proposed fix
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks a task?
+      description: Task ID if this stops a task from being done correctly; leave blank if not.
+      placeholder: "T16"

@@ -1,0 +1,37 @@
+name: Decision needed
+description: An open design question that needs an ADR, an ADR History line, or a card's Decide-first answer.
+title: "decide: "
+labels: []
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: One question, stated so it can be answered.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why it comes up now; the code, docs or measurements involved.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: Each option with its cost.
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+  - type: input
+    id: touches
+    attributes:
+      label: Task or ADR it touches
+      placeholder: "T20, ADR-0008"
+    validations:
+      required: true

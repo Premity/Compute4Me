@@ -7,6 +7,13 @@ For per-version Product Requirements (scope, acceptance criteria), see [docs/prd
 ## [Unreleased]
 
 ### Added
+- **Onboarding and process audit (docs only, 2026-11-24).**
+  - README **Reading order** (three tiers, as in Fovea, plus a "by what you're doing" table) and a "What runs today" note; CLAUDE.md, CONTRIBUTING and docs/README point to it. Every Markdown file is now reachable from the README within two links.
+  - CONTRIBUTING "Known setup gaps" box (until T28/T31) and a CI verdict; docs/README lists every file; tasks/README lists the cards.
+  - **ADR-0021** dev and production differ only at runtime, releases publish versioned images; deployment.md "Dev vs production"; new task stub **T34** release + image publishing.
+  - test-map **Test layers** (unit → integration → container → GPU → fleet) and why there are no browser (Playwright) tests; roadmap "Web dashboard" entry.
+  - Issue forms: bug and polish converted to forms; new **spec issue**, **decision needed** and **fleet check** forms; the dead Discussions link removed. PR template gains "What and why" and an optional Results section. `.claude/commands/review-pr.md` drafts a PR review in chat without posting.
+  - T28 card gains Fovea's extra hooks (`no-commit-to-branch`, `detect-private-key`, a commit-msg check) and a CI `permissions` block; T31 card gains the dev-stack make targets (`up`, `worker`, `token`, `logs`, `ps`, `stop`/`start`/`restart`, `down`, `reset`, `shell`).
 - **Planning and process rewrite (docs only; modelled on the Fovea project's process).**
   - `docs/plan.md`: phases, task index, dependency graph, open items, Definition of Done, and stubs for P3–P5.
   - `docs/tasks/`: card template, full cards for T28–T31, T10–T17, and a session prompt for coding agents.
