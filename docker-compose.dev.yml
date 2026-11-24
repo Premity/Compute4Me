@@ -1,6 +1,10 @@
-# Local dev topology: one Master + two fake Workers for the E2E smoke test.
-# The fake Workers carry no GPU and use a fake container runner (tests/fakes/), so this
-# runs anywhere. Fleshed out alongside the worker daemon (T08) and E2E test (T17).
+# Local dev topology (the "dev" side of ADR-0021): Master + Workers on one host, built from
+# this checkout as ghcr.io/premity/compute4me:dev. Not for real deployments; those use the
+# released image and docs/architecture/deployment.md.
+#
+# Not runnable yet: `serve` and `worker` raise "not implemented" until T31. T31 reworks this
+# file (one Master, one CPU Worker under a `worker` profile, C4M_BENCHMARK=skip, the Docker
+# socket, init: true) and adds `make up`/`down`/`logs`/`smoke`.
 
 services:
   master:
@@ -11,8 +15,8 @@ services:
     volumes:
       - master-data:/data
 
-  # Two Worker placeholders. Token wiring lands with T05/T08; until then this file
-  # documents the intended local topology.
+  # Worker placeholders. T31 replaces them with one Worker that gets C4M_MASTER and
+  # C4M_TOKEN (issued by `make token`) and the host Docker socket.
   worker-1:
     build: .
     command: ["worker"]

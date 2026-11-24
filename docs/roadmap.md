@@ -94,6 +94,7 @@ Sequencing logic: front-load the lower-risk, immediately-useful work (v0.2 compl
 - **Master HA / multi-process** — replace single-process + SQLite with a replicated control plane. *Far off; SQLite is fine at target scale.*
 - **Combined connection string** (`wss://host:8443|eyJ…` or a `--connect` flag that splits it). *v0.1 takes the URL and token separately ([ADR-0015](./adr/0015-master-url-separate-from-token.md)).* One fewer value to paste.
 - **Exactly-once Task execution** — v0.1 tolerates double-runs because all Tasks are idempotent. Only matters if non-idempotent Tasks are ever introduced.
+- **Web dashboard** for fleet and Job status. *v0.1 is CLI + Python API only.* Adding one also adds a browser-test layer (Playwright) to [test-map.md](./architecture/test-map.md#test-layers), so it needs a real user need first.
 
 ---
 

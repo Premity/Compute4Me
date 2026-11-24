@@ -258,7 +258,7 @@ docker run -d --name c4m-worker \
 
 ### 4.2 Cleaner form: Docker Compose
 
-For repeatability, use Compose:
+For repeatability on a real host, use Compose. This is an operator example using the released image and a GPU; it is not the repo's [`docker-compose.dev.yml`](../../docker-compose.dev.yml), which builds the local `:dev` image for development ([ADR-0021](../adr/0021-dev-prod-and-releases.md)).
 
 ```yaml
 # docker-compose.yml
@@ -389,4 +389,4 @@ This is why the trust model is closed-membership ([ADR-0002](../adr/0002-closed-
 - **Multi-Master / federation.** Not on the roadmap.
 - **Detailed schema-migration recipes.** v0.1 has a frozen schema.
 - **Per-Worker resource quotas beyond `max_workers`.** Deferred ([roadmap.md "Someday"](../roadmap.md#someday--unscheduled-no-version-committed)).
-- **Web UI for ops.** None planned for v0.1. CLI is the primary surface.
+- **Web UI for ops.** None planned for v0.1. CLI is the primary surface. (So there are no browser tests either: [test-map.md → Test layers](./test-map.md#test-layers).)

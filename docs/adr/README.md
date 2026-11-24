@@ -75,3 +75,4 @@ Most ADRs are 30–80 lines. Link other ADRs as `[ADR-NNNN](./NNNN-slug.md)`.
 | [0018](./0018-logging-and-events.md) | Logging, events and log shipping | accepted | 2026-11-10 |
 | [0019](./0019-experiment-run-records.md) | Experiment run records and a results registry | accepted | 2026-11-10 |
 | [0020](./0020-docker-is-the-verification-surface.md) | The Docker image is the verification surface | accepted | 2026-11-10 |
+| [0021](./0021-dev-prod-and-releases.md) | Dev and production differ only at runtime; releases publish versioned images | accepted | 2026-11-24 |

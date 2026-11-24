@@ -16,9 +16,9 @@
 |---|---|---|---|
 | **P0 — Scaffolding** ✅ | Repo, types, state store, wire models | T01–T04 | `uv sync`, `docker build`, `compute4me --help` |
 | **P1 — Control-plane bootstrap** | A Worker *container* joins a Master *container* | T05–T09 ✅, then **T28 → T29 → T30 → T31 → T10** | `docker compose up` with one Master and one Worker: the Worker joins, the Master stores its Capability Profile (with `throughput_ref` and bandwidth/RTT). Runs in CI. |
-| **P2 — Job execution core** | One Job runs end to end | T11, T12, T13, T14, T15, T16, T17 | A tiny Search Job (4 trials of `examples/toy_quadratic`) completes on 2 fake Workers in pytest **and** on 2 real Worker containers locally |
+| **P2 — Job execution core** | One Job runs end to end | T11, T12, T13, T14, T15, T16, T17 | A tiny Search Job (4 trials of `examples/toy_quadratic`, created in T17) completes on 2 fake Workers in pytest **and** on 2 real Worker containers locally |
 | **P3 — Reliability** | Survives drops, failures and restarts | T18, T19, T20, T21 | Kill a Worker and then the Master mid-Job; the Job still completes |
-| **P4 — Interfaces & observability** | The full operator and researcher UX | T22, T23, T24, T33 | PRD §13 criteria 1–3 and 8, run from a clean machine with the full CLI |
+| **P4 — Interfaces & observability** | The full operator and researcher UX | T22, T23, T24, T33, T34 | PRD §13 criteria 1–3 and 8, run from a clean machine with the full CLI |
 | **P5 — Eval & research harness** | The scheduler paper's numbers | T32, T25, T26, T27 | One command produces the 3-arm makespan + operator-effort table from registered runs |
 
 Why P1 changed (2026-11-10): `serve`, `worker` and `token issue` were scheduled for T22 (P4), so until P4 nothing could be run from the image, and the Docker-first verification rule ([ADR-0020](./adr/0020-docker-is-the-verification-surface.md)) could not be followed. The Worker image also could not join at all, because the benchmark needed torch and the image has none ([ADR-0016](./adr/0016-benchmark-runs-as-a-container.md)). T28–T31 fix the tooling, add logging, fix the benchmark and wire the minimal CLI before any more features land.
@@ -58,6 +58,7 @@ Sizes: **M** ≈ 3–5 h · **L** ≈ 5–8 h · **L+** = a full day or more. St
 | T23 | Python submission API + SDK | P4 | L | T14, T17 | 📝 [stub](#t23-python-submission-api--sdk-p4-l) |
 | T24 | Observability commands + live display | P4 | L | T10, T17, T29 | 📝 [stub](#t24-observability-commands--live-display-p4-l) |
 | T33 | Host check (`compute4me doctor`) | P4 | M | T30, T31 | 📝 [stub](#t33-host-check-compute4me-doctor-p4-m) |
+| T34 | Release + image publishing | P4 | M | T28, T30, T31 | 📝 [stub](#t34-release--image-publishing-p4-m) |
 | T32 | Experiment run records + results registry | P5 | M | T29 | 📝 [stub](#t32-experiment-run-records--results-registry-p5-m) |
 | T25 | `spacesight` workload images | P5 | L+ | T17, T23 | 📝 [stub](#t25-spacesight-workload-images-p5-l) |
 | T26 | 3-arm scheduler experiment harness | P5 | L+ | T22, T25, T32 | 📝 [stub](#t26-3-arm-scheduler-experiment-harness-p5-l) |
@@ -120,6 +121,9 @@ flowchart TB
     T17 --> T24[T24 observability]
     T10 --> T24
     T31 --> T33[T33 doctor]
+    T31 --> T34[T34 release]
+    T30 --> T34
+    T34 --> T26
 
     T29 --> T32[T32 run records]
     T23 --> T25[T25 spacesight]
@@ -132,7 +136,7 @@ flowchart TB
     class T28,T29,T30,T31,T10 p1
     class T11,T12,T13,T14,T15,T16,T17 p2
     class T18,T19,T20,T21 p3
-    class T22,T23,T24,T33 p4
+    class T22,T23,T24,T33,T34 p4
     class T32,T25,T26,T27 p5
 ```
 
@@ -156,7 +160,7 @@ Decisions a later task owns. Each card's **Decide first** section has the option
 | When | Output |
 |---|---|
 | Before P3 starts (after T17 merges) | Full cards for T18–T21 |
-| Before P4 starts | Full cards for T22–T24, T33 |
+| Before P4 starts | Full cards for T22–T24, T33, T34 |
 | Before P5 starts | Full cards for T32, T25–T27; fleet hardware and schedule for the real-fleet runs |
 
 ## Definition of done (every task)
@@ -229,6 +233,15 @@ Each gets a full card at its detailing session. The bullets are enough to see th
 - One command a contributor runs before joining: Docker socket reachable, `docker run --gpus all` works (NVIDIA Container Toolkit), the bench image is pullable, `C4M_MASTER` reachable, the cert fingerprint matches the token, cache volume free space. Prints ✅/❌ per check with a hint; exit code 1 if a required check fails.
 - Adds a command to the ADR-0013 surface (History line there).
 - Every real-fleet machine runs it and posts the output on the "Needs the real fleet" issue.
+
+### T34: Release + image publishing (P4, M)
+
+- Nothing publishes `ghcr.io/premity/compute4me` today, though every quick start pulls it ([ADR-0021](./adr/0021-dev-prod-and-releases.md)).
+- `release.yml` on a pushed `vX.Y.Z` tag: build, image smoke (`--help`, `version`), push `:X.Y.Z` and `:latest` to GHCR; the bench image the same way (T30's `bench-image.yml` folds in or stays separate, decided here). GHCR package visibility public.
+- Version source: `pyproject.toml` and `compute4me.__version__` match the tag (CI fails otherwise); the CHANGELOG `[Unreleased]` section is cut to the version.
+- README, deployment.md and operations.md show `:<version>` in copyable commands.
+- **Acceptance:** tagging `v0.1.0-rc1` in a fork (or a dry run with `workflow_dispatch`) publishes an image that a clean machine can `docker pull` and run `version` on.
+- Blocks T26: real-fleet Workers pull a released, versioned image so every run records exactly what ran.
 
 ### T32: Experiment run records + results registry (P5, M)
 

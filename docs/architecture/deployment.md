@@ -41,6 +41,20 @@ flowchart TB
 
 The dotted edge is the subtle one: the Worker asks the **host's** Docker daemon to start the user container, so every mount and `--gpus` value must be valid on the host, not inside the Worker container. [T17](../tasks/T17-runner-and-e2e.md) settles how the cache is mounted.
 
+## Dev vs production
+
+One image, run two ways ([ADR-0021](../adr/0021-dev-prod-and-releases.md)); there is no separate dev build.
+
+| | Development | Production |
+|---|---|---|
+| Image | `ghcr.io/premity/compute4me:dev`, built from your checkout (`make image`) | `ghcr.io/premity/compute4me:<version>` from a release (T34); `:latest` = newest release |
+| How it runs | [`docker-compose.dev.yml`](../../docker-compose.dev.yml) on one machine, via `make up` / `make worker` / `make down` (T31) | the `docker run` commands below, or the operator compose in [operations.md §4.2](./operations.md#42-cleaner-form-docker-compose) |
+| Workers | CPU, `C4M_BENCHMARK=skip`, socket mounted | one per GPU, benchmark on, socket mounted |
+| Logs | human-readable on a terminal | JSON lines when stdout isn't a TTY (ADR-0018) |
+| State | throwaway volumes (`make reset` deletes them) | the `c4m-data` volume: back it up ([operations.md §1](./operations.md#1-master-lifecycle)) |
+
+> **Until the first release (T34)** nothing is published, so `docker pull …:latest` fails. Build locally with `make image` and use `:dev` in the commands below.
+
 ## The single Docker image
 
 ```text
@@ -96,10 +110,10 @@ docker run -d --name c4m \
 
 ### Optional flags
 
-| Flag | Default | When to set |
-|---|---|---|
-| `--data-dir DIR` | `/data` | If you want the SQLite + cert in a non-default location inside the container |
-| `--bind HOST:PORT` | `0.0.0.0:8443` | To bind to a specific interface (e.g., `127.0.0.1:8443` for local-only) |
+| Flag | Default | When to set | Since |
+|---|---|---|---|
+| `--data-dir DIR` | `/data` | If you want the SQLite + cert in a non-default location inside the container | T31 |
+| `--bind HOST:PORT` | `0.0.0.0:8443` | To bind to a specific interface (e.g., `127.0.0.1:8443` for local-only) | T31 |
 
 ### Networking notes
 
@@ -139,12 +153,13 @@ docker run -d \
 
 ### Optional flags
 
-| Flag | Default | When to set |
-|---|---|---|
-| `--name NAME` | Auto-generated (`w_<uuid>`) | If you want a stable identifier in the operator's `status` view |
-| `--cache-dir DIR` | `/var/cache/c4m` | If you want the cache elsewhere inside the container |
-| `--max-vram-mb N` | All available | Caps how much VRAM the Worker offers — e.g., contribute 4 GB of an 8 GB card and reserve the rest for your desktop |
-| `-d` | foreground | Detach to run as a daemon |
+| Flag | Default | When to set | Since |
+|---|---|---|---|
+| `--cache-dir DIR` | `/var/cache/c4m` | If you want the cache elsewhere inside the container | T31 |
+| `--data-dir DIR` | `/data` | Where the Worker keeps its `host_id` | T31 |
+| `--name NAME` | Auto-generated (`w_<uuid>`) | If you want a stable identifier in the operator's `status` view | T22 |
+| `--max-vram-mb N` | All available | Caps how much VRAM the Worker offers — e.g., contribute 4 GB of an 8 GB card and reserve the rest for your desktop | T22 |
+| `-d` | foreground | Detach to run as a daemon (until then, Docker's own `-d` does this) | T22 |
 
 ### The throughput benchmark image
 

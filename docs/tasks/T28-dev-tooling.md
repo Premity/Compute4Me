@@ -47,13 +47,13 @@ Tool notes:
 
 1. **Ruff version.** Recommendation: pin the version already in `uv.lock` (0.15.15) exactly (`ruff==0.15.15`) in `pyproject.toml`, and use the same `rev` in pre-commit. One comment in each file says "keep in sync with …".
 2. **Python upper bound.** Recommendation: `requires-python = ">=3.13,<3.14"` and `.python-version` = `3.13`. Moving to 3.14 is then one deliberate PR touching the Dockerfile, both pins and mypy's `python_version`.
-3. **Marker enforcement.** Recommendation: a `pytest_collection_modifyitems` hook in `tests/conftest.py` that errors if a test lacks `task(...)` or a kind marker (`unit` / `integration`). It costs nothing because all 79 tests already comply.
+3. **Marker enforcement.** Recommendation: a `pytest_collection_modifyitems` hook in `tests/conftest.py` that errors if a test lacks `task(...)` or a kind marker (`unit` / `integration`). It costs nothing because every existing test already complies (81 collected on 2026-11-24).
 
 ## Steps
 
 1. **Dependencies:** add `pre-commit`, `pytest-timeout` and `import-linter` to the `dev` group; pin ruff exactly; `uv lock`.
 2. **Python pin:** add `.python-version`; bound `requires-python`; recreate `.venv` (`rm -rf .venv && make dev`) and confirm `uv run python --version` is 3.13.x.
-3. **pre-commit:** ruff `rev` equal to the lock; replace the mirrors-mypy hook with a `repo: local` hook running `uv run mypy --strict src/`; add `gitleaks`; keep mdformat and the link checker. Run `uv run pre-commit run --all-files` and commit the mdformat churn separately.
+3. **pre-commit:** ruff `rev` equal to the lock; replace the mirrors-mypy hook with a `repo: local` hook running `uv run mypy --strict src/`; add `gitleaks`; add `no-commit-to-branch` (`--branch main`) and `detect-private-key` from pre-commit-hooks; add [`conventional-pre-commit`](https://github.com/compilerla/conventional-pre-commit) at the `commit-msg` stage with this repo's types (Fovea runs the same pair); keep mdformat and the link checker. Delete the stale "activate once T01 lands" comments. Run `uv run pre-commit run --all-files` and commit the mdformat churn separately.
 4. **pytest:** `addopts = "--strict-markers -ra"`, `timeout = 60`.
 5. **`tests/conftest.py`:** marker enforcement; auto-skip `requires_docker` (no `docker info`) and `requires_gpu` (no `nvidia-smi`) with a clear reason; shared fixtures `signing_key`, `make_profile(**overrides)`, `master_cert(tmp_path)`.
 6. **`tests/fakes/`:** move the profile factory and the `_start_master` helper (now duplicated in `tests/integration/`) here; update the existing tests to use them.
@@ -64,14 +64,14 @@ Tool notes:
    - `compute4me.client` and `compute4me.sdk` import neither `master` nor `worker`;
    - `compute4me.sdk` imports nothing from `compute4me` (it runs inside user containers).
 9. **CI** (`.github/workflows/ci.yml`):
-   - top-level `concurrency: {group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true}`;
+   - top-level `concurrency: {group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true}` and `permissions: {contents: read}` (jobs that need more ask for it);
    - `timeout-minutes: 15` on every job; `enable-cache: true` on setup-uv;
    - keep `ci-test`, `ci-lint`, `ci-types`; add `ci-imports` (`uv run lint-imports`);
    - add **`ci-image`**: `docker build`, then `docker run --rm $IMAGE --help` and `docker run --rm $IMAGE version`;
    - add **`ci-docs`**: `uv run pre-commit run --all-files mdformat` and `check-md-links`;
    - add **`ci-secrets`**: `gitleaks/gitleaks-action@v2` with `fetch-depth: 0` and `permissions: {contents: read, pull-requests: read}`;
    - add **`pr-title`**: `amannn/action-semantic-pull-request@v5`, on `pull_request` `types: [opened, synchronize, reopened, edited]`, types `feat fix docs test refactor perf build ci chore revert`.
-10. **Makefile:** a `help` target from `##` comments as the default goal; `hooks` (pre-commit install, including `commit-msg` if a message hook is added); `image-smoke` (build + `--help` + `version`); `clean`; make `e2e` select `tests/integration/test_e2e_*.py` only.
+10. **Makefile:** a `help` target from `##` comments as the default goal; `hooks` (`pre-commit install --hook-type pre-commit --hook-type commit-msg`); `image-smoke` (build + `--help` + `version`); `clean`; make `e2e` select `tests/integration/test_e2e_*.py` only.
 11. **Link checker:** `scripts/check_md_links.py` checks only that files exist; anchors are "checked for presence but not validated", which let `prd.md#13-eval--research-runbook` (a heading that never existed) through. Validate `#fragment`s against the target file's headings using GitHub's slug rules. Its docstring promises "a CI-only job" for external links that doesn't exist; either add a weekly `lychee` workflow or delete the sentence.
 12. **`.gitignore`:** `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `.coverage*`, `htmlcov/`, `dist/`, `build/`, `*.pem`, `*.key`.
 13. **Repo settings** (the user does this in the GitHub UI; record the date in the PR): protect `main` requiring `ci-test`, `ci-lint`, `ci-types`, `ci-imports`, `ci-image`, `ci-docs`, `ci-secrets`, `pr-title`, with admin bypass allowed; squash merge only; auto-delete head branches on.
@@ -86,7 +86,7 @@ Tool notes:
 |---|---|---|
 | `tests/unit/test_import_hygiene.py` | `task("T28")`, `unit` | light modules import without torch |
 | `tests/unit/test_conftest_hooks.py` | `task("T28")`, `unit` | a test without `task(...)` fails collection (use `pytester`) |
-| existing suite | — | still 79 passing after the fixture move |
+| existing suite | — | every existing test still passes after the fixture move |
 
 ## Verify in Docker
 
@@ -122,3 +122,4 @@ Expect the same output in the `ci-image` job log.
 ## History
 
 - 2026-11-10: Card written (planning rewrite).
+- 2026-11-24: Compared with Fovea's tooling: added `no-commit-to-branch`, `detect-private-key`, a `conventional-pre-commit` commit-msg hook and a workflow-level `permissions` block. Test count corrected to 81.

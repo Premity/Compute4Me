@@ -53,11 +53,27 @@ After nine tasks, `compute4me serve`, `worker` and `token issue` still raise `No
 6. `docker-compose.dev.yml`: `master` (volume, port 8443) and `worker` (`C4M_MASTER=wss://master:8443`, `C4M_TOKEN=${C4M_TOKEN}`, `C4M_BENCHMARK=skip`, socket mount, `init: true`, compose `profiles: [worker]` so it starts only after a token exists).
 7. `scripts/smoke/compose_join.py`: `up -d master` → wait for the listen log → `exec master compute4me token issue --room dev` → `up -d worker` with the token → assert as in Decide 2 → always `down -v` → non-zero exit on failure with the last 50 log lines of each service.
 8. CI job `ci-compose` (needs `ci-image`), and `make smoke`.
+8b. **Dev-stack make targets** over `docker-compose.dev.yml` (the dev side of [ADR-0021](../adr/0021-dev-prod-and-releases.md)), each with a `##` help line:
+
+   | Target | Does |
+   |---|---|
+   | `make up` | build `:dev` and start the Master in the background |
+   | `make worker` | issue a dev token (`exec master compute4me token issue --room dev`) and start one CPU Worker with it (`--profile worker`); the token is passed in the environment, never written to a file |
+   | `make token` | print a fresh dev token, for running a Worker by hand |
+   | `make logs` | follow every service's logs (`SERVICE=master` for one) |
+   | `make ps` | show the dev stack |
+   | `make stop` / `make start` / `make restart` | stop, start or restart the containers, keeping volumes |
+   | `make down` | remove the containers and network, keeping volumes |
+   | `make reset` | `down -v` after a `y/N` prompt: deletes `master.db`, the cert and the signing key |
+   | `make shell` | a shell in the Master container |
+   | `make smoke` | the scripted join smoke (step 7) |
+
+   They wrap `docker compose -f docker-compose.dev.yml …`, so plain `docker compose` keeps working. Document them in CONTRIBUTING's setup section and CLAUDE.md's command list.
 9. Docs: README quick start (now actually runnable for these three commands), deployment.md, operations.md §4 (co-located Master + Worker), wire-protocol §4.1 (mark which flags exist now).
 
 ## Outputs
 
-`src/compute4me/cli.py`, signing-key helper, `master/state.py` (pragmas), Dockerfile, `docker-compose.dev.yml`, `scripts/smoke/compose_join.py`, `.github/workflows/ci.yml` (`ci-compose`), Makefile, README, deployment.md, operations.md, wire-protocol.md, CHANGELOG.
+`src/compute4me/cli.py`, signing-key helper, `master/state.py` (pragmas), Dockerfile, `docker-compose.dev.yml`, `scripts/smoke/compose_join.py`, `.github/workflows/ci.yml` (`ci-compose`), Makefile (dev-stack targets, `smoke`), CONTRIBUTING, CLAUDE.md, README, deployment.md, operations.md, wire-protocol.md, CHANGELOG.
 
 ## Tests
 
@@ -80,6 +96,7 @@ Also by hand once, outside compose, following the README's operator flow (`docke
 
 - [ ] `serve`, `token issue` and `worker` work from the image with the flags above; tokens survive a Master restart.
 - [ ] `make smoke` passes locally and `ci-compose` is green.
+- [ ] `make up`, `make worker`, `make logs` and `make down` bring a dev Room up and down on a fresh clone; `make help` lists every target.
 - [ ] `docker stop` on either container exits cleanly in under 5 s.
 - [ ] A bad token makes `worker` exit 3 with a formatted error (no traceback without `--debug`).
 - [ ] README and deployment docs describe exactly what now runs.
@@ -100,3 +117,4 @@ Also by hand once, outside compose, following the README's operator flow (`docke
 ## History
 
 - 2026-11-10: Card written (planning rewrite). Pulled forward from T22 by user decision.
+- 2026-11-24: Added the dev-stack make targets (`up`, `worker`, `token`, `logs`, `ps`, `stop`/`start`/`restart`, `down`, `reset`, `shell`), per ADR-0021.

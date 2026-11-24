@@ -4,6 +4,22 @@ Which checks run where, and what triggers them. Test conventions (layout, marker
 
 ✅ = runs automatically there · ▶ = run by hand there · — = never
 
+## Test layers
+
+Five layers, cheapest first. Each catches what the one above it can't.
+
+| Layer | Tool | What it proves | Runs in | Since |
+|---|---|---|---|---|
+| Unit | pytest (`unit`) | pure logic: tokens, types, messages, state store, cost model, scheduler decisions | CI, `make check` | T01 |
+| Integration | pytest (`integration`), real WSS on localhost | Master and Worker code talking over the real wire protocol, no Docker | CI, `make check` | T07 |
+| Container | pytest (`requires_docker`) + the compose smoke | the **image** works: CLI entrypoint, Worker container joins a Master container, user containers run through the host socket | CI (`ci-image`, `ci-compose`), Docker host | T28, T31, T17 |
+| GPU | pytest (`requires_gpu`) + manual | the bench container, GPU passthrough by UUID, OOM classification | a GPU host, by hand | T30, T17 |
+| Fleet | manual, [fleet-check issues](../../.github/ISSUE_TEMPLATE/fleet-check.yml) | NAT traversal, heterogeneous scheduling, the paper's numbers | the real fleet | P5 |
+
+**No browser tests (Playwright, Selenium).** Compute4Me has no web UI and none is planned for v0.1 ([operations.md §8](./operations.md#8-things-this-doc-deliberately-doesnt-cover)): its surfaces are the CLI (tested with pytest and typer's `CliRunner`), the Python API (pytest against a real Master) and the Container Contract (real containers in the container layer). Playwright earns its cost only if a dashboard is added; if one is ever proposed, it brings its own test layer and this table changes.
+
+**Coverage** is reported in `ci-test` (`--cov`) but not gated for v0.1: the integration and container layers matter more than a line count, and a gate would push tests toward easy-to-cover code.
+
 ## Where each check runs
 
 | Check | Catches | Since | pre-commit | CI (every PR + push to `main`) | Local `make check` | Local, Docker host | Real fleet |
@@ -28,11 +44,11 @@ Which checks run where, and what triggers them. Test conventions (layout, marker
 
 | Command | Runs |
 |---|---|
-| `make check` | lint + types + import contracts + tests without `requires_docker`/`requires_gpu`; the same as the CI jobs that need no Docker |
+| `make check` | lint + types + tests without `requires_docker`/`requires_gpu`; import contracts join it in T28. The same as the CI jobs that need no Docker |
 | `uv run pytest` | every test this machine can run; `requires_docker`/`requires_gpu` tests skip themselves with a reason when Docker or a GPU is missing (T28 `conftest.py`) |
 | `uv run pytest -m 'task("T16")'` | one task's tests |
-| `make image-smoke` | build the image, then `--help` and `version` |
-| `make smoke` | the compose join smoke test |
+| `make image-smoke` (T28) | build the image, then `--help` and `version` |
+| `make smoke` (T31) | the compose join smoke test |
 | `uv run pre-commit run --all-files` | every hook on every file |
 
 ## Notes
